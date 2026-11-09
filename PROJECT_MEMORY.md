@@ -57,7 +57,7 @@ decides what is or isn't an intrusion — it only processes what Suricata report
 | Layer            | Technology                                   |
 |------------------|----------------------------------------------|
 | Detection engine | Suricata IDS 8.x (or compatible stable)      |
-| OS (engine host) | Ubuntu Linux (WSL2 / VM / native — TBD)      |
+| OS (engine host) | Kali Linux 2026.3 (Debian-based), VirtualBox |
 | Backend          | Python 3, Flask                              |
 | Storage          | SQLite                                        |
 | Frontend         | HTML, CSS, vanilla JavaScript                 |
@@ -120,9 +120,8 @@ cyberguard-suricata-ids/
 
 - **Main workstation:** Windows 11 + VS Code.
 - **Python:** 3.12.10 on Windows (`python`). Virtual environment at `.venv/`.
-- **Linux environment for Suricata:** NOT yet chosen. Options under consideration:
-  Ubuntu WSL2 (preferred for simplicity), Ubuntu VM, or native Ubuntu. To be
-  decided in a later phase.
+- **Linux environment for Suricata:** Kali Linux 2026.3 (Debian-based) running
+  in an Oracle VirtualBox VM.
 - **Fallback plan:** if live traffic capture is unreliable, use Suricata offline
   PCAP analysis against controlled lab traffic. Never fabricate detections.
 
@@ -321,7 +320,7 @@ user's explicit Phase 2 prompt.
 
 Wait for the user's next phase prompt (Phase 2). Likely candidates (not started
 until explicitly requested):
-1. Select and prepare the Linux environment (WSL2 / VM / native Ubuntu).
+1. Prepare the Kali Linux 2026.3 VM (Oracle VirtualBox) for Suricata.
 2. Install Suricata and document version + config paths.
 3. Configure EVE JSON output and author a minimal custom lab rule.
 

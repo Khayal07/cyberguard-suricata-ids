@@ -45,7 +45,7 @@ single source of truth.
 
 ## 3. Technology Stack (do not expand without explicit approval)
 
-Suricata 8.x (or compatible stable) · Ubuntu Linux · Python 3 · Flask · SQLite ·
+Suricata 8.x (or compatible stable) · Kali Linux (Debian-based) · Python 3 · Flask · SQLite ·
 HTML · CSS · Vanilla JavaScript · EVE JSON · Telegram Bot API (optional final phase).
 
 **Forbidden unless explicitly approved:** React, Next.js, Docker, Redis,

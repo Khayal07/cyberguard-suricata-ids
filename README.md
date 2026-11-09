@@ -25,7 +25,7 @@ See [`docs/architecture.md`](docs/architecture.md) for details.
 
 ## Technology stack
 
-- **Suricata IDS 8.x** (the detection engine) on Ubuntu Linux
+- **Suricata IDS 8.x** (the detection engine) on Kali Linux (Debian-based)
 - **Python 3**, **Flask**
 - **SQLite**
 - **HTML / CSS / vanilla JavaScript**
