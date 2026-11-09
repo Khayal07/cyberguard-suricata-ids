@@ -14,11 +14,12 @@ Standard library only. It does NOT write files, execute shell commands, or list
 directories. Suricata matches the HTTP request URI, so the response status code
 does not affect detection.
 
-NOTE: written on Windows; NOT yet run on the Kali VM. It will be validated when
-the repository is cloned onto the VM. (The manual Phase 3 tests used
-`python3 -m http.server`, which returned 404 for the /cyberguard-* paths; this
-purpose-built server returns 200 for them instead. Either way Suricata alerts on
-the request URI.)
+NOTE: validated manually on the Kali VM — `python3 lab/server.py --port 8000`
+returned 200 for `/`, `/cyberguard-test`, and `/cyberguard-warning`, and Suricata
+raised alerts sid 1000001 and 1000002 for that traffic (http status 200). (The
+earlier Phase 3 tests used `python3 -m http.server`, which returned 404 for the
+/cyberguard-* paths; this purpose-built server returns 200 instead. Either way
+Suricata alerts on the request URI.)
 
 Usage:
     python lab/server.py [--port 8000]

@@ -31,9 +31,11 @@ python lab/server.py --port 8000
 | `GET /cyberguard-warning`| 200      | trips rule sid 1000002 (Warning Alert)|
 | anything else            | 404      | —                                    |
 
-> **Status:** `server.py` was **written on Windows and has NOT yet been run on
-> the Kali VM**; it will be validated when the repo is cloned there. The manual
-> Phase 3 detection tests used `python3 -m http.server` instead.
+> **Status:** `server.py` has been **validated manually on the Kali VM** —
+> `python3 lab/server.py --port 8000` returned 200 for `/`, `/cyberguard-test`,
+> and `/cyberguard-warning`, and Suricata raised alerts sid 1000001 and 1000002
+> for that traffic (http status 200). (The earlier Phase 3 detection tests used
+> `python3 -m http.server` instead.)
 
 ## How a detection test works
 

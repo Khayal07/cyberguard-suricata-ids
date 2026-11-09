@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 4 — Python Backend & EVE JSON Integration (CODE COMPLETE; Windows tests pass; Kali end-to-end pending)
+**Current phase:** Phase 4 — Python Backend & EVE JSON Integration (COMPLETE; Windows tests pass; Kali end-to-end validated manually)
 
 ---
 
@@ -338,12 +338,12 @@ docs):**
   commenting out the Test Alert rule stopped new Test Alerts (count unchanged
   while Warning kept firing); restoring it resumed detection.
 - Confirmed the real EVE alert field set the Python reader will ingest.
-- Added `lab/server.py` (harmless localhost test server, written on Windows, not
-  yet run on the VM), updated `lab/README.md`, added
+- Added `lab/server.py` (harmless localhost test server; later validated manually
+  on the Kali VM in Phase 4), updated `lab/README.md`, added
   `docs/phase3-detection-tests.md`, and commented `cyberguard.rules`
   (rule lines kept byte-identical).
 
-**Phase 4 (code complete — Windows tests pass; Kali end-to-end pending):**
+**Phase 4 (COMPLETE — Windows tests pass; Kali end-to-end validated manually):**
 - Python backend now ingests **real** Suricata EVE JSON into SQLite and serves it.
 - **EVE processing logic:** incremental read resuming from persisted
   (inode, byte offset); only `event_type == "alert"` kept; invalid JSON counted +
@@ -395,7 +395,7 @@ sudo suricata -c /etc/suricata/suricata.yaml -i lo -D --pidfile /tmp/suricata.pi
 ```bash
 # Harmless local test server (manual tests used the stdlib server)
 python3 -m http.server 8000 --bind 127.0.0.1
-# Repo equivalent (not yet run on VM): python lab/server.py --port 8000
+# Repo equivalent (validated on Kali VM): python lab/server.py --port 8000
 
 # Trigger requests
 curl http://127.0.0.1:8000/index.html          # no alert
@@ -484,6 +484,21 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 - Fixtures: `tests/fixtures/eve_alerts_sample.jsonl` holds the two REAL Suricata
   8.0.7 alert lines from the VM.
 
+**Phase 4 end-to-end on the Kali VM (verified manually — live Suricata 8.0.7):**
+- `git pull`, created venv, `pip install -r requirements.txt`. ✅
+- `python -m app.main ingest-once` → **read 6, inserted 6, duplicates 0,
+  invalid 0** (6 genuine alerts from `/var/log/suricata/eve.json`). ✅
+- `python -m app.main` served on `127.0.0.1:5000`. ✅
+- `GET /api/status` → `suricata_process = "verified_running"`. ✅
+- `GET /api/alerts` and `GET /api/stats` returned **real** Suricata alerts. ✅
+- Dashboard in Kali Firefox showed **"SURICATA RUNNING (verified)"**. ✅
+- Background worker ingested live traffic: stored count grew **6 → 8**. ✅
+- `lab/server.py` validated on the VM: `python3 lab/server.py --port 8000` returned
+  200 for `/`, `/cyberguard-test`, `/cyberguard-warning`; Suricata raised sid
+  1000001 and 1000002 (http status 200). ✅
+- Full chain validated: Suricata → eve.json → reader → SQLite → Flask → dashboard,
+  Python performing no detection of its own.
+
 ---
 
 ## 17. Errors Encountered and How They Were Fixed
@@ -510,10 +525,6 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
   totals, not per-run).
 - During the Phase 3 disable step, a separate `suricata -T` re-validation was not
   run after commenting the rule (Suricata still started successfully).
-- `lab/server.py` was written on Windows and **has not yet been run on the VM**
-  (manual tests used `python3 -m http.server`).
-- **Phase 4 backend end-to-end against live Suricata on the VM is still pending**
-  (only Windows unit tests with real fixtures have run so far).
 - SQLite has **no migrations**; a schema change requires deleting the disposable
   `data/cyberguard.db` (it only caches re-ingestable Suricata alerts).
 - Reading `/var/log/suricata/eve.json` on the VM requires the backend to have read
@@ -524,20 +535,17 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 
 ## 19. Current Development Phase
 
-**Phase 4 — Python Backend & EVE JSON Integration: CODE COMPLETE.** Windows unit
-tests pass (34); **end-to-end validation on the Kali VM is pending** (to be run by
-the user against live Suricata). Awaiting the user's explicit **Phase 5** prompt.
+**Phase 4 — Python Backend & EVE JSON Integration: COMPLETE.** Windows unit tests
+pass (34) **and end-to-end validation on the Kali VM is complete (verified
+manually)** — see section 16. Awaiting the user's explicit **Phase 5** prompt.
 
 ---
 
 ## 20. Exact Next Steps
 
-1. **(User, on the Kali VM)** Clone/pull the repo, run Suricata capturing on `lo`,
-   start `python -m app.main`, trigger the lab requests, and confirm genuine alerts
-   appear via `/api/alerts` and `/api/stats` and that `/api/status` shows
-   `verified_running`.
-2. Wait for the user's explicit **Phase 5** prompt (expected: full dashboard UI
-   consuming `/api/alerts` and `/api/stats`).
+Wait for the user's explicit **Phase 5** prompt (expected: full dashboard UI
+consuming `/api/alerts` and `/api/stats`). Phase 4 is fully validated on the Kali
+VM; nothing further is required there.
 
 Do **not** begin Phase 5 until the user explicitly provides it.
 
@@ -557,7 +565,7 @@ Do **not** begin Phase 5 until the user explicitly provides it.
   rule; lab server + test docs added. ✅ (manual on VM)
 - **Phase 4 — Backend & EVE integration:** incremental EVE reader, SQLite storage
   with dedup, Flask API (status/alerts/stats), background worker, 34 Windows
-  tests. ✅ code complete; ⏳ Kali end-to-end pending.
+  tests. ✅ code complete; ✅ Kali end-to-end validated manually.
 - **Later phases (order set by the user):** full dashboard UI over the API
   (Phase 5); optional Telegram notifications.
 

@@ -117,7 +117,8 @@ These are exactly the fields the Python EVE reader will ingest in a later phase.
 ## Repo lab server
 
 `lab/server.py` is a purpose-built, harmless localhost-only test server (returns
-**200** for `/cyberguard-test` and `/cyberguard-warning`). It was **written on
-Windows and has NOT yet been run on the Kali VM** — it will be validated when the
-repository is cloned onto the VM. The manual Phase 3 tests above instead used
-`python3 -m http.server`.
+**200** for `/cyberguard-test` and `/cyberguard-warning`). It has since been
+**validated manually on the Kali VM** (Phase 4): `python3 lab/server.py --port
+8000` returned 200 for `/`, `/cyberguard-test`, and `/cyberguard-warning`, and
+Suricata raised alerts sid 1000001 and 1000002 for that traffic (http status
+200). The manual Phase 3 tests above instead used `python3 -m http.server`.

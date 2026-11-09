@@ -1,7 +1,7 @@
 # Phase 4 — Python Backend & Suricata EVE JSON Integration
 
 > **Windows unit tests pass (34 passed); end-to-end validation on the Kali VM is
-> pending.** This phase wires the Python backend to Suricata's real EVE JSON
+> COMPLETE (verified manually).** This phase wires the Python backend to Suricata's real EVE JSON
 > output. Suricata remains the only detection engine — Python only reads, stores,
 > and serves what Suricata wrote.
 
@@ -174,5 +174,20 @@ missing file, truncation and inode-change rotation, DB persistence, `/api/alerts
 filters (including date), `/api/stats`, and `/api/status` with injected
 missing-pid / no-proc (not-running / unverified) cases.
 
-**End-to-end validation on the Kali VM is pending** (to be run against live
-Suricata + lab traffic).
+## End-to-end validation on the Kali VM (COMPLETE — verified manually)
+
+Run on the Kali Linux 2026.3 VM against live Suricata 8.0.7 + lab traffic:
+
+1. `git pull` the repo, created the venv, `pip install -r requirements.txt`.
+2. `python -m app.main ingest-once` → **read 6, inserted 6, duplicates 0,
+   invalid 0** (6 genuine Suricata alerts ingested from `/var/log/suricata/eve.json`).
+3. `python -m app.main` served on `127.0.0.1:5000`.
+4. `GET /api/status` → `suricata_process = "verified_running"` (pidfile +
+   `/proc/<pid>/comm`).
+5. `GET /api/alerts` and `GET /api/stats` returned the **real** Suricata alerts.
+6. Dashboard in Kali Firefox showed **"SURICATA RUNNING (verified)"**.
+7. With the background worker polling, new lab traffic grew the stored alert count
+   live from **6 to 8** — confirming genuine, continuous ingestion.
+
+This validates the full chain end-to-end: Suricata → eve.json → reader → SQLite →
+Flask API → dashboard, with Python performing no detection of its own.

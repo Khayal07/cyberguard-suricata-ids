@@ -83,7 +83,7 @@ docs/           architecture notes
 
 ## Current development status
 
-**Phase 4 code complete (Windows unit tests pass; Kali end-to-end pending).**
+**Phase 4 complete (Windows unit tests pass; Kali end-to-end validated manually).**
 Suricata (8.0.7, Kali VM) is installed, configured, and its custom rules verified
 against live lab traffic. The Python backend now incrementally reads Suricata's
 real EVE JSON, stores genuine alerts in SQLite (with dedup), and serves them via
