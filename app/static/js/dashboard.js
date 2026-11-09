@@ -83,6 +83,12 @@
         " · invalid lines: " + (data.invalid_lines_count != null ? data.invalid_lines_count : "—") +
         " · last ingest: " + (data.last_alert_ingested_at || "—");
     }
+    var tg = $("telegram-state");
+    if (tg) {
+      tg.textContent =
+        "Telegram: " + (data.telegram_enabled ? "on" : "off") +
+        " · last: " + (data.last_notification_status || "none");
+    }
     if (banner) {
       if (bannerMsg) { banner.textContent = bannerMsg; banner.classList.add("show"); }
       else { banner.classList.remove("show"); }

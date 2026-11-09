@@ -11,7 +11,7 @@ import re
 import threading
 from datetime import datetime, timedelta, timezone
 
-from app.services import database, eve_reader
+from app.services import database, eve_reader, telegram_notifier
 
 logger = logging.getLogger("cyberguard.alert_service")
 
@@ -58,12 +58,17 @@ def to_db_record(extracted):
 
 # --- Ingestion ------------------------------------------------------------
 
-def ingest(config):
+def ingest(config, on_inserted=None):
     """Read new EVE alerts and store them. Returns a summary dict.
 
     Deduplication is twofold: the persisted read offset avoids re-reading old
     bytes, and the DB UNIQUE constraint ignores duplicate alert rows. Re-reading
     the same file therefore never creates duplicates.
+
+    ``on_inserted``, if given, is called once AFTER commit with the list of
+    records that were genuinely inserted this cycle (never duplicates). The
+    one-shot CLI passes nothing, so it never notifies; only the background
+    worker wires this to Telegram.
     """
     result = eve_reader.read_new_alerts(config.DB_PATH, config.EVE_PATH)
 
@@ -78,12 +83,14 @@ def ingest(config):
 
     inserted = 0
     duplicates = 0
+    inserted_records = []
     conn = database.get_connection(config.DB_PATH)
     try:
         for extracted in result["alerts"]:
             record = to_db_record(extracted)
             if database.insert_alert(conn, record):
                 inserted += 1
+                inserted_records.append(record)
             else:
                 duplicates += 1
         conn.commit()
@@ -94,6 +101,9 @@ def ingest(config):
         database.update_ingest_state(
             config.DB_PATH, last_alert_ingested_at=_now_utc_string()
         )
+
+    if on_inserted and inserted_records:
+        on_inserted(inserted_records)
 
     return {
         "status": "ok",
@@ -205,7 +215,7 @@ def get_status(config, proc_base=None):
     suricata_process = check_suricata_process(
         config.SURICATA_PID_PATH, proc_base or getattr(config, "PROC_BASE", "/proc")
     )
-    return {
+    status = {
         "backend_running": True,
         "detection_engine": "suricata",
         "eve_path": config.EVE_PATH,
@@ -216,6 +226,9 @@ def get_status(config, proc_base=None):
         "invalid_lines_count": state.get("invalid_lines_count") or 0,
         "total_alerts": database.count_alerts(config.DB_PATH),
     }
+    # Telegram fields never include the token or chat id.
+    status.update(telegram_notifier.status_fields(config))
+    return status
 
 
 # --- Background ingestion worker ------------------------------------------
@@ -224,13 +237,19 @@ class IngestionWorker:
     """Daemon thread that polls EVE JSON every ``POLL_SECONDS`` and ingests.
 
     Guards against being started twice and shuts down cleanly via an Event.
+    An optional ``notifier`` (Telegram) is fed ONLY the alerts inserted in each
+    cycle. The FIRST cycle is treated as a baseline: any alerts already present
+    in eve.json at startup are recorded for dedup but NOT sent, so starting the
+    worker never floods Telegram with historical alerts.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, notifier=None):
         self.config = config
+        self.notifier = notifier
         self._stop = threading.Event()
         self._thread = None
         self._lock = threading.Lock()
+        self._baseline_done = False
 
     def start(self):
         with self._lock:
@@ -243,10 +262,25 @@ class IngestionWorker:
             self._thread.start()
             logger.info("Ingestion worker started (poll=%ss)", self.config.POLL_SECONDS)
 
+    def poll_once(self):
+        """Run one ingest cycle and notify for genuinely new alerts.
+
+        On the first invocation, newly-read alerts are a baseline: their dedup
+        keys are recorded but no Telegram message is sent (no startup flood).
+        """
+        inserted = []
+        ingest(self.config, on_inserted=inserted.extend)
+        if self.notifier is not None:
+            if self._baseline_done:
+                self.notifier.notify_new_alerts(inserted)
+            else:
+                self.notifier.mark_seen(inserted)
+        self._baseline_done = True
+
     def _run(self):
         while not self._stop.is_set():
             try:
-                ingest(self.config)
+                self.poll_once()
             except Exception:  # never let the worker die on a bad cycle
                 logger.exception("Ingestion cycle failed")
             self._stop.wait(self.config.POLL_SECONDS)
@@ -256,4 +290,6 @@ class IngestionWorker:
         thread = self._thread
         if thread:
             thread.join(timeout=5)
+        if self.notifier is not None:
+            self.notifier.stop()
         logger.info("Ingestion worker stopped")

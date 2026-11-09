@@ -55,6 +55,16 @@ class Config:
     # Background ingestion poll interval (seconds).
     POLL_SECONDS = float(_env("CYBERGUARD_POLL_SECONDS", "2"))
 
-    # --- Telegram (optional, final phase) ---
-    TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN", "")
-    TELEGRAM_CHAT_ID = _env("TELEGRAM_CHAT_ID", "")
+    # --- Telegram notifications (OPTIONAL) ---
+    # No secret is ever hardcoded; everything comes from the environment. The
+    # feature is ENABLED only when BOTH token and chat id are set (see below).
+    TELEGRAM_TOKEN = _env("CYBERGUARD_TELEGRAM_TOKEN", "")
+    TELEGRAM_CHAT_ID = _env("CYBERGUARD_TELEGRAM_CHAT_ID", "")
+    # Notify only when an alert's severity is <= this threshold (1 = most severe,
+    # so a smaller number means fewer, more serious alerts). Default 3.
+    TELEGRAM_MIN_SEVERITY = int(_env("CYBERGUARD_TELEGRAM_MIN_SEVERITY", "3"))
+    # Max Telegram messages per rolling minute; anything beyond this is collapsed
+    # into ONE summary message instead of being sent individually. Default 5.
+    TELEGRAM_RATE_PER_MIN = int(_env("CYBERGUARD_TELEGRAM_RATE_PER_MIN", "5"))
+    # Derived: on only when both the token and the chat id are present.
+    TELEGRAM_ENABLED = bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)

@@ -5,10 +5,10 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 6 — Rule Lab + End-to-End Testing (**COMPLETE** — 42 pytest
-tests pass on Windows; the three `scripts/` and the live end-to-end flow were
-**validated manually on the Kali VM** by the project owner: start_lab all `[OK]`,
-e2e_test PASS 4/FAIL 0, rule_toggle proved detection depends on the rule)
+**Current phase:** Phase 7 — Optional Telegram Alert Notifications (**CODE COMPLETE
+on Windows**; 57 pytest tests pass, Telegram disabled by default and fully
+isolated; **pending manual validation on the Kali VM** with a real bot token by
+the project owner). Phase 6 is COMPLETE and was validated manually on the Kali VM.
 
 ---
 
@@ -85,6 +85,7 @@ cyberguard-suricata-ids/
 │   │   ├── eve_reader.py      # incremental EVE JSON reader (inode+offset; alerts only)
 │   │   ├── alert_service.py   # normalize/ingest/query/stats/status + ingestion worker
 │   │   ├── rule_service.py    # read-only Suricata rules-file parser (Phase 6; no detection)
+│   │   ├── telegram_notifier.py  # optional Telegram alerts (Phase 7; stdlib-only, isolated)
 │   │   └── database.py        # SQLite alerts + ingest_state, parameterized queries
 │   ├── templates/
 │   │   ├── index.html         # dashboard
@@ -112,6 +113,7 @@ cyberguard-suricata-ids/
 │   ├── test_alert_service.py  # normalization, ingest, status
 │   ├── test_database.py       # persistence, dedup, queries, stats
 │   ├── test_rules.py          # read-only rule parser + /api/rules (Phase 6)
+│   ├── test_telegram.py       # Telegram notifier: disabled/format/dedup/rate/isolation (Phase 7)
 │   └── test_api.py            # /api/health /status /alerts /stats
 ├── data/.gitkeep              # runtime DB/EVE dir (contents git-ignored)
 ├── docs/
@@ -120,7 +122,8 @@ cyberguard-suricata-ids/
 │   ├── phase3-detection-tests.md  # Phase 3 detection test results (manual, Kali VM)
 │   ├── phase4-integration.md  # Phase 4 backend/EVE integration
 │   ├── phase5-dashboard.md    # Phase 5 SOC dashboard + manual test checklist
-│   └── phase6-rule-lab.md     # Phase 6 Rule Lab + e2e scripts demo guide
+│   ├── phase6-rule-lab.md     # Phase 6 Rule Lab + e2e scripts demo guide
+│   └── phase7-telegram.md     # Phase 7 optional Telegram setup/test/revoke guide
 ├── conftest.py                # makes project root importable for pytest
 ├── requirements.txt           # Flask, python-dotenv, pytest
 ├── README.md
@@ -225,16 +228,23 @@ the VM via `.env`).
 
 - `app/config.py` — `Config` reads env vars: Flask host/port/env/secret plus the
   Phase 4 vars `CYBERGUARD_EVE_PATH`, `CYBERGUARD_SURICATA_PID`,
-  `CYBERGUARD_PROC_BASE`, `CYBERGUARD_DB_PATH`, `CYBERGUARD_POLL_SECONDS`, and the
+  `CYBERGUARD_PROC_BASE`, `CYBERGUARD_DB_PATH`, `CYBERGUARD_POLL_SECONDS`, the
   Phase 6 var `CYBERGUARD_RULES_PATH` (default
-  `/var/lib/suricata/rules/cyberguard.rules`). Loads `.env` if present; no
+  `/var/lib/suricata/rules/cyberguard.rules`), and the Phase 7 Telegram vars
+  `CYBERGUARD_TELEGRAM_TOKEN`, `CYBERGUARD_TELEGRAM_CHAT_ID`,
+  `CYBERGUARD_TELEGRAM_MIN_SEVERITY` (default 3),
+  `CYBERGUARD_TELEGRAM_RATE_PER_MIN` (default 5), plus derived `TELEGRAM_ENABLED`
+  (true only when both token and chat id are set). Loads `.env` if present; no
   hardcoded secrets.
 - `app/__init__.py` — `create_app(config)` factory: configures Flask, calls
   `database.init_db()`, registers routes. Does **not** start the worker (so tests
   never spawn threads).
 - `app/main.py` — CLI entry point. `serve` (default) runs the API + ingestion
-  worker; `ingest-once` runs a single cycle. Worker-double-start guarded via
-  `WERKZEUG_RUN_MAIN` + an internal lock; clean shutdown via `atexit`.
+  worker (wiring a `TelegramNotifier` into the worker and `set_active`);
+  `ingest-once` runs a single cycle **without** a notifier (never sends Telegram);
+  `telegram-test` sends one clearly-labelled connectivity test and prints OK/failed
+  without the token. Worker-double-start guarded via `WERKZEUG_RUN_MAIN` + an
+  internal lock; clean shutdown via `atexit` (also stops the notifier thread).
 - `app/services/eve_reader.py` — `read_new_alerts(db_path, eve_path)` incremental
   reader using a persisted (inode, byte offset) in SQLite. Surfaces ONLY
   `event_type == "alert"`; skips invalid/partial lines; handles missing file
@@ -247,8 +257,12 @@ the VM via `.env`).
 - `app/services/alert_service.py` — `normalize_timestamp` (−0500→UTC),
   `to_db_record`, `ingest(config)` (read→normalize→store, dedup summary),
   `list_alerts`, `build_filters`, `get_stats`, `check_suricata_process`
-  (pidfile + `/proc/<pid>/comm`, no shell), `get_status`, and `IngestionWorker`
-  (daemon poll thread).
+  (pidfile + `/proc/<pid>/comm`, no shell), `get_status` (now also returns the
+  Telegram status fields via `telegram_notifier.status_fields`), and
+  `IngestionWorker` (daemon poll thread). `ingest(config, on_inserted=None)` calls
+  `on_inserted` after commit with ONLY the genuinely inserted records; the worker's
+  first `poll_once` is a silent baseline (`mark_seen`), later cycles call
+  `notify_new_alerts`.
 - `app/services/rule_service.py` — **read-only** Suricata rules-file parser
   (Phase 6). `parse_rules_file(path)` extracts `sid`, `msg`, `priority`,
   `classtype`, `rev`, `enabled` per rule line (`alert` = enabled, `#alert` =
@@ -257,7 +271,19 @@ the VM via `.env`).
   `file_found=false`, never raises. `get_rules(config)` reads the fixed
   `config.RULES_PATH` (never a request path). Makes NO detection decision and
   never edits the file or runs Suricata.
-- `notify` — optional Telegram notifications (Phase 7; not created yet).
+- `app/services/telegram_notifier.py` — **optional** Telegram notifications
+  (Phase 7). Standard-library only (`urllib.request`, no new dependency), HTTPS to
+  api.telegram.org, ~5s timeout, **plain text** (no `parse_mode`) with per-field
+  truncation (~100 chars) + control-char stripping so attacker-controlled fields
+  (URL/user-agent/signature) cannot inject markup or extra lines. `TelegramNotifier`
+  decides synchronously (severity filter `severity <= MIN_SEVERITY`, dedup on
+  `(flow_id, timestamp_raw, signature_id)`, rate limit) and delivers on a small
+  daemon thread so it never blocks ingestion. Rate limit: at most
+  `RATE_PER_MIN`/rolling-minute; excess collapsed into ONE summary message.
+  `mark_seen` records baseline keys without sending (no startup flood). All errors
+  are caught and logged with the **token scrubbed**; `set_active`/`status_fields`
+  feed `/api/status` without ever exposing the token/chat id. Makes NO detection
+  decision.
 
 ---
 
@@ -274,7 +300,9 @@ API (JSON):
 - `GET /api/status` → `{backend_running, detection_engine, eve_path,
   eve_file_exists, suricata_process (verified_running|verified_not_running|
   unverified), last_event_timestamp, last_alert_ingested_at, invalid_lines_count,
-  total_alerts}`. Never reports running just because eve.json exists.
+  total_alerts, telegram_enabled, last_notification_status ("none"|"ok"|"error"),
+  last_notification_at}`. Never reports running just because eve.json exists.
+  **Never** exposes the Telegram token or chat id (Phase 7).
 - `GET /api/alerts` → `{alerts:[...], count, limit, offset}`, newest first.
   Params: `limit`, `offset`, `severity`, `signature_id`, `signature`, `src_ip`,
   `q`, `from`, `to` (ISO). Empty category shown as `uncategorized`.
@@ -443,6 +471,37 @@ Kali VM):**
   PASS 4/FAIL 0 (exit 0), `rule_toggle_experiment.sh` proved detection depends on
   the Suricata rule, and `/rule-lab` showed both rules enabled (see section 16).
 
+**Phase 7 (optional Telegram notifications — CODE COMPLETE on Windows; Kali
+validation with a real token PENDING):**
+- Added `app/services/telegram_notifier.py`: standard-library-only sender
+  (`urllib.request`, no new dependency) that forwards a **new** Suricata alert to
+  Telegram. Plain text (no `parse_mode`), per-field truncation (~100 chars) +
+  control-char stripping (attacker-controlled URL/user-agent/signature cannot
+  inject markup or extra lines).
+- **Enabled only** when both `CYBERGUARD_TELEGRAM_TOKEN` and
+  `CYBERGUARD_TELEGRAM_CHAT_ID` are set; otherwise fully inert (everything works
+  as before). Added `CYBERGUARD_TELEGRAM_MIN_SEVERITY` (default 3) and
+  `CYBERGUARD_TELEGRAM_RATE_PER_MIN` (default 5) to `app/config.py` and blank
+  placeholders to `.env.example`.
+- **Only newly-inserted alerts notify** (the worker passes the DB insert result
+  via `ingest(..., on_inserted=...)`); duplicates and historical alerts never
+  send. The worker's first cycle is a **silent baseline** (`mark_seen`) so
+  startup never floods. `ingest-once` passes no notifier → never sends.
+- **Dedup** on `(flow_id, timestamp_raw, signature_id)` (DB UNIQUE key + bounded
+  in-memory guard). **Rate limit** of N/rolling-minute with excess collapsed into
+  ONE summary message ("N more alerts suppressed…"), never dropped, never
+  unbounded. **Failure isolation:** all Telegram errors caught + logged with the
+  token scrubbed; sending runs on a small daemon thread so ingestion never blocks.
+- New CLI `python -m app.main telegram-test` (labelled "CyberGuard connectivity
+  test (not a detection alert)", prints OK/failed, never the token). `/api/status`
+  gained `telegram_enabled`, `last_notification_status`, `last_notification_at`
+  (no token/chat id). Dashboard status card shows "Telegram: on/off" via
+  `textContent`.
+- Added `tests/test_telegram.py` (15 tests, no network — HTTP sender mocked).
+  **57 pytest tests pass** on Windows. Added `docs/phase7-telegram.md`.
+- **Pending:** manual validation on the Kali VM with a REAL bot token (setup,
+  `telegram-test`, live alert, revoke flow) by the project owner.
+
 ---
 
 ## 15. Commands Used to Run the Application
@@ -516,10 +575,21 @@ bash scripts/e2e_test.sh                  # drive traffic, assert PASS table
 bash scripts/rule_toggle_experiment.sh    # manual proof detection depends on rule
 ```
 
+**Phase 7 Telegram (optional; configure in a LOCAL git-ignored `.env`):**
+
+```bash
+# In .env (NEVER committed): set both to enable; leave blank to disable.
+#   CYBERGUARD_TELEGRAM_TOKEN=...      CYBERGUARD_TELEGRAM_CHAT_ID=...
+python -m app.main telegram-test   # one labelled connectivity test; prints OK/failed
+python -m app.main                 # serve: new Suricata alerts -> Telegram message
+```
+
 **Env vars (defaults):** `CYBERGUARD_EVE_PATH=/var/log/suricata/eve.json`,
 `CYBERGUARD_SURICATA_PID=/tmp/suricata.pid`, `CYBERGUARD_DB_PATH=data/cyberguard.db`,
 `CYBERGUARD_POLL_SECONDS=2`, `CYBERGUARD_PROC_BASE=/proc`,
-`CYBERGUARD_RULES_PATH=/var/lib/suricata/rules/cyberguard.rules`.
+`CYBERGUARD_RULES_PATH=/var/lib/suricata/rules/cyberguard.rules`,
+`CYBERGUARD_TELEGRAM_TOKEN=""`, `CYBERGUARD_TELEGRAM_CHAT_ID=""`,
+`CYBERGUARD_TELEGRAM_MIN_SEVERITY=3`, `CYBERGUARD_TELEGRAM_RATE_PER_MIN=5`.
 
 ---
 
@@ -639,6 +709,28 @@ bash scripts/rule_toggle_experiment.sh    # manual proof detection depends on ru
 - Rule Lab page `/rule-lab` showed both rules **enabled** (priority 1 and 2,
   rev 2) with the "file state, not proof that Suricata loaded it" notice. ✅
 
+**Phase 7 (actual, Windows — optional Telegram, NO network):**
+- `pytest -q` → **57 passed in ~2.2s** (42 prior + 15 new Telegram tests). ✅ New
+  `tests/test_telegram.py` (HTTP sender mocked) covers: disabled when unset and
+  when only the token is set; exact message format; truncation + control-char
+  stripping (no injected lines); None fields render `-`; new alert notifies once +
+  dedup; baseline `mark_seen` never sends; `severity <= MIN` filter; rate limit
+  collapses excess into ONE summary; send error does **not** raise, sets status
+  `error`, and the **token never appears in logs** (`<redacted>` instead); `_scrub`
+  removes a token from a leaky URL; worker baseline then a new alert notifies once;
+  `ingest-once` path never notifies; `/api/status` reports `telegram_enabled`
+  without the token/chat id; status reflects an active notifier's `ok` state.
+- `python -m app.main telegram-test` (Telegram unconfigured on Windows) → printed
+  the "not configured … Nothing was sent." hint, sent nothing, no token shown. ✅
+- `node --check dashboard.js` clean (Telegram line uses `textContent`). ✅
+- Telegram is **inert by default**: with no token/chat id the notifier reports
+  `enabled=False` and never sends. No real token used anywhere on Windows.
+
+**Phase 7 end-to-end on the Kali VM:** ⏳ PENDING manual validation by the project
+owner with a REAL bot token (BotFather setup, `telegram-test`, a live
+`/cyberguard-test` alert delivered to Telegram, and the revoke flow). Results to
+be recorded here once reported.
+
 **Phase 5 end-to-end on the Kali VM (verified manually):**
 - `sudo suricata -T -c /etc/suricata/suricata.yaml -v` → **2 rules loaded, 0
   failed** (rev:2); Suricata restarted. ✅
@@ -684,26 +776,43 @@ bash scripts/rule_toggle_experiment.sh    # manual proof detection depends on ru
 - The 8 alerts written under rules rev:1 remain **severity 3 / "uncategorized"**;
   only alerts generated after rev:2 loaded carry severity 1/2 (EVE records are
   historical and are not rewritten).
+- Telegram (Phase 7) is **optional** and needs outbound internet to
+  `api.telegram.org`; in a fully offline lab `telegram-test` fails gracefully. The
+  in-memory dedup guard resets on restart (the DB UNIQUE key + the silent baseline
+  pass still prevent duplicate storage and re-sending old alerts). The summary
+  message reports only *how many* alerts were suppressed, not their detail.
 
 ---
 
 ## 19. Current Development Phase
 
-**Phase 6 — Rule Lab + End-to-End Testing: COMPLETE** (42 pytest tests pass on
-Windows; `/api/rules` + Rule Lab page + three Kali scripts + docs). The three
-`scripts/` and the live end-to-end flow were **validated manually on the Kali VM**
-by the project owner (start_lab all `[OK]`, e2e_test PASS 4/FAIL 0, rule_toggle
-proved detection depends on the rule, `/rule-lab` shows both rules enabled). See
-section 16. Telegram remains **Phase 7** and has not been started.
+**Phase 7 — Optional Telegram Alert Notifications: CODE COMPLETE on Windows**
+(57 pytest tests pass; `telegram_notifier.py`, 4 config vars, `telegram-test` CLI,
+`/api/status` fields, dashboard indicator, docs). Telegram is OFF unless both the
+token and chat id are set; it is stdlib-only, plain-text, deduped, rate-limited,
+and fully failure-isolated with the token scrubbed from logs. **Pending** manual
+validation on the Kali VM with a real bot token by the project owner (see
+sections 16 and 20).
+
+**Phase 6 — Rule Lab + End-to-End Testing: COMPLETE** — validated manually on the
+Kali VM (start_lab all `[OK]`, e2e_test PASS 4/FAIL 0, rule_toggle proved
+detection depends on the rule, `/rule-lab` shows both rules enabled). See
+section 16.
 
 ---
 
 ## 20. Exact Next Steps
 
-1. Wait for the user's explicit **Phase 7** prompt (optional Telegram
-   notifications). Phase 6 is fully complete and validated on the Kali VM.
+1. Project owner validates Phase 7 on the Kali VM with a REAL bot token (kept only
+   in a local, git-ignored `.env`): create a bot via BotFather, get the chat id,
+   run `python -m app.main telegram-test` (expect OK + a message), then run
+   `python -m app.main`, send `curl http://127.0.0.1:8000/cyberguard-test`, and
+   confirm a Telegram alert arrives (and that historical alerts did not flood on
+   startup). See `docs/phase7-telegram.md`. Report results so they can be recorded.
+2. Then wait for the user's explicit **Phase 8** prompt (documentation and
+   presentation).
 
-Do **not** begin Phase 7 until the user explicitly provides it.
+Do **not** begin Phase 8 until the user explicitly provides it.
 
 ---
 
@@ -728,8 +837,11 @@ Do **not** begin Phase 7 until the user explicitly provides it.
 - **Phase 6 — Rule Lab + end-to-end tests:** read-only `/api/rules` + Rule Lab
   page, `scripts/` (start_lab, e2e_test, rule_toggle_experiment), docs, 42 tests.
   ✅ Windows; ✅ Kali validated manually.
-- **Later phases (order set by the user):** Phase 7 optional Telegram
-  notifications; Phase 8 documentation and presentation.
+- **Phase 7 — Optional Telegram notifications:** stdlib-only `telegram_notifier.py`
+  (plain text, dedup, severity filter, rate limit + summary, failure isolation,
+  token scrubbed), `telegram-test` CLI, `/api/status` fields, dashboard indicator,
+  docs, 57 tests. ✅ Windows; ⏳ Kali validation (real token) pending.
+- **Later phase (order set by the user):** Phase 8 documentation and presentation.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.
