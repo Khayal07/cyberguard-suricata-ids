@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 3 — Detection Tests (COMPLETE — executed manually on the Kali VM)
+**Current phase:** Phase 4 — Python Backend & EVE JSON Integration (CODE COMPLETE; Windows tests pass; Kali end-to-end pending)
 
 ---
 
@@ -79,9 +79,9 @@ cyberguard-suricata-ids/
 │   ├── config.py              # environment-based configuration
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── eve_reader.py      # read/parse Suricata EVE JSON (safe if missing)
-│   │   ├── alert_service.py   # honest engine status + alert count
-│   │   └── database.py        # SQLite connection + alerts schema
+│   │   ├── eve_reader.py      # incremental EVE JSON reader (inode+offset; alerts only)
+│   │   ├── alert_service.py   # normalize/ingest/query/stats/status + ingestion worker
+│   │   └── database.py        # SQLite alerts + ingest_state, parameterized queries
 │   ├── templates/
 │   │   ├── index.html         # dashboard
 │   │   ├── alerts.html        # alerts page (empty until ingestion phase)
@@ -97,12 +97,19 @@ cyberguard-suricata-ids/
 ├── lab/
 │   ├── README.md              # authorized local lab rules of engagement + server usage
 │   └── server.py              # harmless localhost HTTP test server (stdlib; Windows-only so far)
-├── tests/test_eve_reader.py   # pytest suite (8 tests)
+├── tests/
+│   ├── conftest.py            # shared config/fixtures helpers
+│   ├── fixtures/eve_alerts_sample.jsonl  # REAL Suricata alert fixtures (2 lines)
+│   ├── test_eve_reader.py     # reader behaviors
+│   ├── test_alert_service.py  # normalization, ingest, status
+│   ├── test_database.py       # persistence, dedup, queries, stats
+│   └── test_api.py            # /api/health /status /alerts /stats
 ├── data/.gitkeep              # runtime DB/EVE dir (contents git-ignored)
 ├── docs/
 │   ├── architecture.md        # architecture explanation
 │   ├── suricata-setup.md      # Phase 2 Suricata install/config (manual, Kali VM)
-│   └── phase3-detection-tests.md  # Phase 3 detection test results (manual, Kali VM)
+│   ├── phase3-detection-tests.md  # Phase 3 detection test results (manual, Kali VM)
+│   └── phase4-integration.md  # Phase 4 backend/EVE integration (Windows tests pass)
 ├── conftest.py                # makes project root importable for pytest
 ├── requirements.txt           # Flask, python-dotenv, pytest
 ├── README.md
@@ -197,21 +204,30 @@ the VM via `.env`).
 
 ## 10. Python Modules and Responsibilities
 
-- `app/config.py` — `Config` class reading env vars (Flask host/port/env/secret,
-  `EVE_JSON_PATH`, `SQLITE_DB_PATH`, Telegram). Loads `.env` via python-dotenv if
-  present; project-relative defaults, no hardcoded secrets.
-- `app/__init__.py` — `create_app()` factory: configures Flask, calls
-  `database.init_db()`, registers page + API routes.
-- `app/main.py` — entry point; builds the app and runs it on the configured
-  host/port (`python -m app.main`).
-- `app/services/eve_reader.py` — `eve_file_exists()`, `parse_line()`,
-  `read_events(path, limit)`, `count_events()`. Reads Suricata EVE JSON
-  (JSON-Lines); returns empty/None safely when the file is missing or a line is
-  malformed. Never generates events.
-- `app/services/database.py` — `get_connection()`, `init_db()` (creates `alerts`
-  table), `count_alerts()`.
-- `app/services/alert_service.py` — `get_engine_status(config)` (honest engine
-  state from EVE file presence), `get_alert_count(config)`.
+- `app/config.py` — `Config` reads env vars: Flask host/port/env/secret plus the
+  Phase 4 vars `CYBERGUARD_EVE_PATH`, `CYBERGUARD_SURICATA_PID`,
+  `CYBERGUARD_PROC_BASE`, `CYBERGUARD_DB_PATH`, `CYBERGUARD_POLL_SECONDS`. Loads
+  `.env` if present; no hardcoded secrets.
+- `app/__init__.py` — `create_app(config)` factory: configures Flask, calls
+  `database.init_db()`, registers routes. Does **not** start the worker (so tests
+  never spawn threads).
+- `app/main.py` — CLI entry point. `serve` (default) runs the API + ingestion
+  worker; `ingest-once` runs a single cycle. Worker-double-start guarded via
+  `WERKZEUG_RUN_MAIN` + an internal lock; clean shutdown via `atexit`.
+- `app/services/eve_reader.py` — `read_new_alerts(db_path, eve_path)` incremental
+  reader using a persisted (inode, byte offset) in SQLite. Surfaces ONLY
+  `event_type == "alert"`; skips invalid/partial lines; handles missing file
+  (`eve_missing`), truncation/rotation, and Suricata stopped. `extract_alert_fields`
+  maps EVE fields (incl. http + in_iface) and keeps the raw line.
+- `app/services/database.py` — `get_connection`, `init_db` (alerts + ingest_state
+  tables, indexes), `insert_alert` (INSERT OR IGNORE), `count_alerts`,
+  `query_alerts` (parameterized filters, newest first), `get_stats`,
+  `get_ingest_state`, `update_ingest_state`.
+- `app/services/alert_service.py` — `normalize_timestamp` (−0500→UTC),
+  `to_db_record`, `ingest(config)` (read→normalize→store, dedup summary),
+  `list_alerts`, `build_filters`, `get_stats`, `check_suricata_process`
+  (pidfile + `/proc/<pid>/comm`, no shell), `get_status`, and `IngestionWorker`
+  (daemon poll thread).
 - `notify` — optional Telegram notifications (final phase; not created yet).
 
 ---
@@ -226,33 +242,50 @@ Pages:
 API (JSON):
 - `GET /api/health` → `{"status":"ok","service":"cyberguard","component":"flask-api"}`.
   Liveness of the Flask API itself, NOT the detection engine.
-- `GET /api/status` → `{"detection_engine":"suricata","suricata_configured":<bool>,
-  "eve_json_path":"...","eve_json_exists":<bool>,"message":"...","alert_count":<int>}`.
-  Honest engine state: `suricata_configured` is `false` until EVE JSON output
-  exists. Verified returning `false` / `alert_count: 0` in Phase 1.
+- `GET /api/status` → `{backend_running, detection_engine, eve_path,
+  eve_file_exists, suricata_process (verified_running|verified_not_running|
+  unverified), last_event_timestamp, last_alert_ingested_at, invalid_lines_count,
+  total_alerts}`. Never reports running just because eve.json exists.
+- `GET /api/alerts` → `{alerts:[...], count, limit, offset}`, newest first.
+  Params: `limit`, `offset`, `severity`, `signature_id`, `signature`, `src_ip`,
+  `q`, `from`, `to` (ISO). Empty category shown as `uncategorized`.
+- `GET /api/stats` → `{total, by_severity, by_signature, by_src_ip, last_24h}`.
+- No endpoint executes commands or accepts filesystem paths.
 
 ---
 
 ## 12. Database Schema
 
-SQLite file at `SQLITE_DB_PATH` (default `data/cyberguard.db`, git-ignored).
-Table `alerts` (created by `database.init_db()`, empty until ingestion phase):
+SQLite file at `CYBERGUARD_DB_PATH` (default `data/cyberguard.db`, git-ignored).
 
-| column        | type    | notes                     |
-|---------------|---------|---------------------------|
-| id            | INTEGER | PK AUTOINCREMENT          |
-| timestamp     | TEXT    | event timestamp           |
-| signature     | TEXT    | rule message              |
-| signature_id  | INTEGER | Suricata SID              |
-| category      | TEXT    | alert category            |
-| severity      | INTEGER | alert severity            |
-| src_ip        | TEXT    |                           |
-| src_port      | INTEGER |                           |
-| dest_ip       | TEXT    |                           |
-| dest_port     | INTEGER |                           |
-| protocol      | TEXT    |                           |
-| raw_json      | TEXT    | original EVE JSON line    |
-| created_at    | TEXT    | DEFAULT CURRENT_TIMESTAMP |
+**Table `alerts`** — `UNIQUE(flow_id, timestamp_raw, signature_id)` with
+`INSERT OR IGNORE`; indexes on `timestamp_utc`, `signature_id`, `severity`,
+`src_ip`:
+
+| column | type | notes |
+|--------|------|-------|
+| id | INTEGER | PK AUTOINCREMENT |
+| timestamp_raw | TEXT | original Suricata timestamp (e.g. `…-0500`) |
+| timestamp_utc | TEXT | normalized UTC (`…+00:00`) |
+| flow_id | INTEGER | Suricata flow id |
+| src_ip/src_port/dest_ip/dest_port | TEXT/INT | endpoints |
+| proto | TEXT | e.g. TCP |
+| app_proto | TEXT | e.g. http |
+| signature | TEXT | rule message |
+| signature_id | INTEGER | Suricata SID |
+| severity | INTEGER | alert severity (priority) |
+| category | TEXT | raw (may be empty "") |
+| action | TEXT | e.g. allowed |
+| http_url/http_method/http_hostname/http_status/http_user_agent | mixed | HTTP fields |
+| in_iface | TEXT | capture interface (e.g. lo) |
+| raw_json | TEXT | original EVE JSON line (preserved) |
+| ingested_at | TEXT | DEFAULT CURRENT_TIMESTAMP |
+
+**Table `ingest_state`** — single row (id=1): `inode`, `byte_offset`,
+`invalid_lines_count`, `last_event_timestamp`, `last_alert_ingested_at`.
+
+No migration framework: the DB only caches re-ingestable alerts, so a schema
+change means deleting the old `data/cyberguard.db` (it is recreated on startup).
 
 ---
 
@@ -310,6 +343,22 @@ docs):**
   `docs/phase3-detection-tests.md`, and commented `cyberguard.rules`
   (rule lines kept byte-identical).
 
+**Phase 4 (code complete — Windows tests pass; Kali end-to-end pending):**
+- Python backend now ingests **real** Suricata EVE JSON into SQLite and serves it.
+- **EVE processing logic:** incremental read resuming from persisted
+  (inode, byte offset); only `event_type == "alert"` kept; invalid JSON counted +
+  skipped; partial last line not consumed; truncation/inode-change restart from 0;
+  missing file → `eve_missing`; Suricata stopped → no new lines, no crash.
+- Timestamps normalized `−0500`→UTC; both raw + UTC stored. Empty category kept in
+  DB, shown as `uncategorized` in API.
+- Dedup via persisted offset **and** `UNIQUE(flow_id, timestamp_raw, signature_id)`.
+- New API: `/api/status`, `/api/alerts` (filters incl. date, pagination),
+  `/api/stats`; `/api/health` retained.
+- Suricata process verified via pidfile + `/proc/<pid>/comm` (no shell/subprocess);
+  `unverified` on Windows.
+- Background daemon worker polls every `CYBERGUARD_POLL_SECONDS`; `ingest-once` CLI.
+- 34 pytest tests pass on Windows with no Suricata (see section 16).
+
 ---
 
 ## 15. Commands Used to Run the Application
@@ -361,6 +410,18 @@ grep '"event_type":"alert"' eve.json \
 grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 restored
 ```
 
+**Phase 4 backend (Windows dev):**
+
+```bash
+.venv/Scripts/python.exe -m app.main ingest-once   # one ingestion cycle
+.venv/Scripts/python.exe -m app.main               # API + worker (localhost:5000)
+.venv/Scripts/python.exe -m pytest -q              # 34 tests
+```
+
+**Env vars (defaults):** `CYBERGUARD_EVE_PATH=/var/log/suricata/eve.json`,
+`CYBERGUARD_SURICATA_PID=/tmp/suricata.pid`, `CYBERGUARD_DB_PATH=data/cyberguard.db`,
+`CYBERGUARD_POLL_SECONDS=2`, `CYBERGUARD_PROC_BASE=/proc`.
+
 ---
 
 ## 16. Tests Performed and Actual Results
@@ -410,12 +471,31 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
   `dest_port 8000`, `app_proto http`, `http.url`, `http_method GET`,
   `status 404`, `http_user_agent curl/8.21.0`, `flow` section; timestamps `-0500`.
 
+**Phase 4 (actual, Windows, no Suricata):**
+- `pytest -v` → **34 passed in ~1.8s**. ✅ Covers: real-fixture parsing; invalid
+  JSON line; partial/incomplete line; non-alert events ignored; alert
+  normalization; empty category accepted; `-0500` timestamp parsing; duplicate /
+  re-ingest dedup (incl. offset-reset still dedupes); missing file; truncation +
+  inode-change rotation; DB persistence; parameterized-SQL injection-as-data;
+  `/api/alerts` filters incl. date + pagination; `/api/stats`; `/api/status`
+  unverified (no /proc) and verified_not_running (proc present, pid missing).
+- `python -m app.main ingest-once` (no Suricata) → `{'status': 'eve_missing', ...}`
+  (honest no-op). ✅
+- Fixtures: `tests/fixtures/eve_alerts_sample.jsonl` holds the two REAL Suricata
+  8.0.7 alert lines from the VM.
+
 ---
 
 ## 17. Errors Encountered and How They Were Fixed
 
-None in Phase 0 or Phase 1. (Note: pytest needed the project root on `sys.path`
-to import the `app` package — handled by adding a root `conftest.py`.)
+- Phase 1: pytest needed the project root on `sys.path` to import `app` — fixed
+  with a root `conftest.py`.
+- Phase 4: Windows text-mode writes translated `\n`→`\r\n`, leaving a stray `\r`
+  on EVE lines in tests. Fixed by (a) having the reader tolerate a trailing `\r`
+  and (b) writing test EVE files as raw LF bytes (mirrors real Suricata output).
+- Phase 4: a stale Phase 1 `data/cyberguard.db` (old schema) made `init_db` fail
+  creating the `timestamp_utc` index. The DB is a disposable, git-ignored cache;
+  removed it and it was recreated with the new schema.
 
 ---
 
@@ -432,28 +512,34 @@ to import the `app` package — handled by adding a root `conftest.py`.)
   run after commenting the rule (Suricata still started successfully).
 - `lab/server.py` was written on Windows and **has not yet been run on the VM**
   (manual tests used `python3 -m http.server`).
-- Backend and Suricata do not yet run together; integration on the VM is Phase 4.
+- **Phase 4 backend end-to-end against live Suricata on the VM is still pending**
+  (only Windows unit tests with real fixtures have run so far).
+- SQLite has **no migrations**; a schema change requires deleting the disposable
+  `data/cyberguard.db` (it only caches re-ingestable Suricata alerts).
+- Reading `/var/log/suricata/eve.json` on the VM requires the backend to have read
+  access (file is root-owned, world-readable in this setup).
 - Dashboard not secured for public exposure (localhost-only by design).
 
 ---
 
 ## 19. Current Development Phase
 
-**Phase 3 — Detection Tests: COMPLETE** (executed manually on the Kali VM;
-lab files + docs committed here). Awaiting the user's explicit **Phase 4** prompt.
+**Phase 4 — Python Backend & EVE JSON Integration: CODE COMPLETE.** Windows unit
+tests pass (34); **end-to-end validation on the Kali VM is pending** (to be run by
+the user against live Suricata). Awaiting the user's explicit **Phase 5** prompt.
 
 ---
 
 ## 20. Exact Next Steps
 
-Wait for the user's next phase prompt (**Phase 4**). Expected focus (not started
-until explicitly requested):
-1. Clone the repo onto the Kali VM and run the Flask backend alongside Suricata.
-2. Point the Flask app's `EVE_JSON_PATH` at `/var/log/suricata/eve.json` and
-   ingest genuine alert events into SQLite.
-3. Validate `lab/server.py` on the VM against the live rules.
+1. **(User, on the Kali VM)** Clone/pull the repo, run Suricata capturing on `lo`,
+   start `python -m app.main`, trigger the lab requests, and confirm genuine alerts
+   appear via `/api/alerts` and `/api/stats` and that `/api/status` shows
+   `verified_running`.
+2. Wait for the user's explicit **Phase 5** prompt (expected: full dashboard UI
+   consuming `/api/alerts` and `/api/stats`).
 
-Do **not** begin any of these until the user explicitly provides the phase.
+Do **not** begin Phase 5 until the user explicitly provides it.
 
 ---
 
@@ -469,9 +555,11 @@ Do **not** begin any of these until the user explicitly provides the phase.
 - **Phase 3 — Detection tests:** genuine alerts verified on loopback for sid
   1000001/1000002; disable/restore experiment proved detection depends on the
   rule; lab server + test docs added. ✅ (manual on VM)
-- **Later phases (order set by the user):** clone repo on VM and run backend
-  alongside Suricata, ingesting genuine EVE alerts into SQLite (Phase 4); full
-  Flask API over stored events; full dashboard; optional Telegram notifications.
+- **Phase 4 — Backend & EVE integration:** incremental EVE reader, SQLite storage
+  with dedup, Flask API (status/alerts/stats), background worker, 34 Windows
+  tests. ✅ code complete; ⏳ Kali end-to-end pending.
+- **Later phases (order set by the user):** full dashboard UI over the API
+  (Phase 5); optional Telegram notifications.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.

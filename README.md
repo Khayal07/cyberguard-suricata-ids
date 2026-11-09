@@ -83,11 +83,14 @@ docs/           architecture notes
 
 ## Current development status
 
-**Phase 1 complete.** The project structure and a minimal Flask application
-exist. The app runs even when Suricata is not installed and honestly reports the
-detection engine as **NOT CONFIGURED** until Suricata's EVE JSON output is
-present. Suricata installation, rule authoring, event ingestion, and the full
-dashboard are handled in later phases.
+**Phase 4 code complete (Windows unit tests pass; Kali end-to-end pending).**
+Suricata (8.0.7, Kali VM) is installed, configured, and its custom rules verified
+against live lab traffic. The Python backend now incrementally reads Suricata's
+real EVE JSON, stores genuine alerts in SQLite (with dedup), and serves them via
+`/api/status`, `/api/alerts`, and `/api/stats`. The app runs even when Suricata is
+absent and reports the engine honestly (never a fake active state). The full
+dashboard UI is a later phase. See
+[`docs/phase4-integration.md`](docs/phase4-integration.md).
 
 See [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) for detailed project state.
 

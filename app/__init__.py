@@ -5,26 +5,28 @@ ensures the SQLite schema exists, and registers routes.
 
 Architecture note: this package NEVER performs intrusion detection. It only
 reads, stores, and serves the genuine events that Suricata writes to EVE JSON.
+No route executes shell commands or accepts filesystem paths.
 """
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 from app.config import Config
 from app.services import alert_service, database
 
 
 def create_app(config=None):
-    """Build and return the configured Flask application."""
+    """Build and return the configured Flask application.
+
+    The background ingestion worker is NOT started here (so importing the app
+    in tests never spawns threads); it is started explicitly in app/main.py.
+    """
     config = config or Config
 
     app = Flask(__name__)
     app.config.from_object(config)
-    # Keep the active config object available to request handlers.
     app.config["APP_CONFIG"] = config
 
-    # Ensure the SQLite schema exists. The database is empty until Suricata
-    # events are ingested in a later phase.
-    database.init_db(config.SQLITE_DB_PATH)
+    database.init_db(config.DB_PATH)
 
     _register_routes(app, config)
     return app
@@ -51,16 +53,28 @@ def _register_routes(app, config):
     def health():
         """Liveness of the Flask API itself (NOT the detection engine)."""
         return jsonify(
-            {
-                "status": "ok",
-                "service": "cyberguard",
-                "component": "flask-api",
-            }
+            {"status": "ok", "service": "cyberguard", "component": "flask-api"}
         )
 
     @app.route("/api/status")
     def status():
-        """Honest status of the Suricata detection engine and stored alerts."""
-        engine = alert_service.get_engine_status(config)
-        engine["alert_count"] = alert_service.get_alert_count(config)
-        return jsonify(engine)
+        """Honest status: backend, EVE file, and verified Suricata process."""
+        return jsonify(alert_service.get_status(config))
+
+    @app.route("/api/alerts")
+    def alerts():
+        """Paginated, filterable list of stored Suricata alerts (newest first)."""
+        filters = alert_service.build_filters(request.args)
+        limit = request.args.get("limit", 50)
+        offset = request.args.get("offset", 0)
+        try:
+            limit = int(limit)
+            offset = int(offset)
+        except (TypeError, ValueError):
+            limit, offset = 50, 0
+        return jsonify(alert_service.list_alerts(config, filters, limit, offset))
+
+    @app.route("/api/stats")
+    def stats():
+        """Aggregate statistics over stored alerts."""
+        return jsonify(alert_service.get_stats(config))
