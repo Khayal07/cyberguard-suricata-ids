@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 4 — Python Backend & EVE JSON Integration (COMPLETE; Windows tests pass; Kali end-to-end validated manually)
+**Current phase:** Phase 5 — SOC Dashboard (COMPLETE on Windows; rules rev:2 + browser visuals pending Kali validation)
 
 ---
 
@@ -109,7 +109,8 @@ cyberguard-suricata-ids/
 │   ├── architecture.md        # architecture explanation
 │   ├── suricata-setup.md      # Phase 2 Suricata install/config (manual, Kali VM)
 │   ├── phase3-detection-tests.md  # Phase 3 detection test results (manual, Kali VM)
-│   └── phase4-integration.md  # Phase 4 backend/EVE integration (Windows tests pass)
+│   ├── phase4-integration.md  # Phase 4 backend/EVE integration
+│   └── phase5-dashboard.md    # Phase 5 SOC dashboard + manual test checklist
 ├── conftest.py                # makes project root importable for pytest
 ├── requirements.txt           # Flask, python-dotenv, pytest
 ├── README.md
@@ -179,12 +180,17 @@ run on Windows.* Full write-up: [`docs/suricata-setup.md`](docs/suricata-setup.m
 Source-of-truth copy in the repo: `suricata/rules/cyberguard.rules`. On the VM
 these are deployed to `/var/lib/suricata/rules/cyberguard.rules`.
 
-| sid     | message                 | protocol | direction               | match (http.uri contains) |
-|---------|-------------------------|----------|-------------------------|---------------------------|
-| 1000001 | CyberGuard Test Alert   | http     | to_server, established  | `/cyberguard-test`        |
-| 1000002 | CyberGuard Warning Alert| http     | to_server, established  | `/cyberguard-warning`     |
+| sid     | message                 | protocol | direction               | match (http.uri contains) | priority/severity (rev:2) |
+|---------|-------------------------|----------|-------------------------|---------------------------|---------------------------|
+| 1000001 | CyberGuard Test Alert   | http     | to_server, established  | `/cyberguard-test`        | priority:1 → sev 1 (Critical) |
+| 1000002 | CyberGuard Warning Alert| http     | to_server, established  | `/cyberguard-warning`     | priority:2 → sev 2 (High)     |
 
-**Status:** both rules load successfully (0 failed) **and are now verified
+**rev:2 (Phase 5):** added `priority` + `classtype:misc-activity` to both rules so
+alerts carry a real severity/category (`msg`/`sid`/`content` unchanged). **PENDING
+KALI VALIDATION** — not yet run through `suricata -T` / live tests on the VM.
+
+**Status (rev:1, Phase 3):** both rules load successfully (0 failed) **and are
+verified
 against live lab traffic in Phase 3** — `/cyberguard-test` → sid 1000001,
 `/cyberguard-warning` → sid 1000002, both produced genuine EVE JSON alerts
 (see section 16 and `docs/phase3-detection-tests.md`). Local custom SID range is
@@ -289,15 +295,24 @@ change means deleting the old `data/cyberguard.db` (it is recreated on startup).
 
 ---
 
-## 13. Dashboard Components
+## 13. Dashboard Components (Phase 5 — SOC dashboard)
 
-- `index.html` — Detection Engine Status card, API Health card, About card.
-  `dashboard.js` fetches `/api/status` and `/api/health` on load and renders the
-  honest state (shows "NOT CONFIGURED" in red when Suricata is unconfigured;
-  never a fake active state).
-- `alerts.html` — alerts table placeholder ("No alerts yet").
-- `rule_lab.html` — rule lab placeholder.
-- `static/css/style.css` — dark theme styling.
+Plain HTML/CSS/vanilla JS, no frameworks/CDN. Single shared `dashboard.js` drives
+both pages; render functions no-op when their element is absent.
+
+- `index.html` (`/`) — summary cards (Total, Critical sev 1, High sev 2, Suricata
+  Engine status), hand-built **inline-SVG** severity distribution chart, Top
+  Source IPs, Top Signatures, Recent Alerts table with search/filters
+  (severity, signature, src_ip, q, from/to date), pagination, and a click-to-open
+  alert detail panel (all fields, no raw payload).
+- `alerts.html` (`/alerts`) — same alerts table/filters/pagination/detail as a
+  focused full-list view.
+- `rule_lab.html` (`/rule-lab`) — unchanged placeholder (Phase 6).
+- `static/js/dashboard.js` — polls `/api/status`, `/api/stats`, `/api/alerts`
+  every ~3s; loading/empty/API-failure/Suricata-unverified states; **no flicker**
+  on background refresh; **XSS-safe** (all dynamic text via `textContent`/DOM, no
+  `innerHTML`).
+- `static/css/style.css` — dark SOC theme, responsive, severity badges.
 
 ---
 
@@ -358,6 +373,18 @@ docs):**
   `unverified` on Windows.
 - Background daemon worker polls every `CYBERGUARD_POLL_SECONDS`; `ingest-once` CLI.
 - 34 pytest tests pass on Windows with no Suricata (see section 16).
+
+**Phase 5 (SOC dashboard — complete on Windows; rules rev:2 + browser pending):**
+- Built the dark SOC dashboard (cards, inline-SVG severity chart, top IPs/
+  signatures, alerts table with filters/pagination/detail) on `/` and a focused
+  alerts view on `/alerts`; `rule_lab` stays a Phase 6 placeholder.
+- ~3s polling with loading/empty/API-failure/Suricata-unverified states, no
+  flicker; XSS-safe rendering (no `innerHTML`; `node --check` clean).
+- Updated `suricata/rules/cyberguard.rules` to rev:2 (priority + classtype) —
+  **pending Kali validation**.
+- No backend Python change; 34 pytest tests still pass. Local serve + curl
+  confirmed pages 200 and `/api/stats`/`/api/alerts` return real data, no
+  `raw_json` exposed.
 
 ---
 
@@ -499,6 +526,18 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 - Full chain validated: Suricata → eve.json → reader → SQLite → Flask → dashboard,
   Python performing no detection of its own.
 
+**Phase 5 (actual, Windows — dashboard data layer):**
+- `pytest -q` → **34 passed** (no backend change). ✅
+- Ingested fixtures into a scratch DB (read 2, inserted 2), served the app, and
+  curled: `/` and `/alerts` → HTTP 200; `/api/stats` → `{total:2, by_severity:
+  {"3":2}, …, last_24h:2}`; `/api/alerts?severity=3` → count 2;
+  `?from=2026-11-10` → count 0; **no `raw_json`** in `/api/alerts`;
+  `/api/status` → `suricata_process: unverified` (honest on Windows). ✅
+- `node --check dashboard.js` clean; no `innerHTML`/`insertAdjacentHTML`/
+  `document.write` with data. ✅
+- Browser/visual validation (chart, badges, detail panel, live polling) →
+  **pending on the Kali VM** (checklist in `docs/phase5-dashboard.md`). ⏳
+
 ---
 
 ## 17. Errors Encountered and How They Were Fixed
@@ -530,24 +569,34 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 - Reading `/var/log/suricata/eve.json` on the VM requires the backend to have read
   access (file is root-owned, world-readable in this setup).
 - Dashboard not secured for public exposure (localhost-only by design).
+- Rules `cyberguard.rules` rev:2 (priority/classtype) is **not yet validated on the
+  Kali VM** (`suricata -T` + live tests pending); existing alerts remain severity 3
+  until the VM reloads rev:2, so the Critical/High cards read 0 with current data.
+- SOC dashboard **browser/visual** behavior not yet validated on the VM (only the
+  Windows data layer was checked); see `docs/phase5-dashboard.md` checklist.
 
 ---
 
 ## 19. Current Development Phase
 
-**Phase 4 — Python Backend & EVE JSON Integration: COMPLETE.** Windows unit tests
-pass (34) **and end-to-end validation on the Kali VM is complete (verified
-manually)** — see section 16. Awaiting the user's explicit **Phase 5** prompt.
+**Phase 5 — SOC Dashboard: COMPLETE on Windows** (34 tests pass; dashboard data
+layer verified via local serve + curl). **Pending on the Kali VM:** validate rules
+rev:2 (`suricata -T` + live tests) and the dashboard's browser/visual behavior
+(checklist in `docs/phase5-dashboard.md`). Awaiting the user's explicit **Phase 6**
+prompt. (Phase 4 end-to-end was validated on the VM — see section 16.)
 
 ---
 
 ## 20. Exact Next Steps
 
-Wait for the user's explicit **Phase 5** prompt (expected: full dashboard UI
-consuming `/api/alerts` and `/api/stats`). Phase 4 is fully validated on the Kali
-VM; nothing further is required there.
+1. **(User, on the Kali VM)** Deploy rules rev:2 (`cyberguard.rules` →
+   `/var/lib/suricata/rules/`), run `sudo suricata -T …` to confirm they load,
+   send lab traffic, and confirm new alerts show severity 1/2 and the dashboard's
+   Critical/High cards update. Walk the `docs/phase5-dashboard.md` browser checklist.
+2. Wait for the user's explicit **Phase 6** prompt (expected: optional Telegram
+   notifications).
 
-Do **not** begin Phase 5 until the user explicitly provides it.
+Do **not** begin Phase 6 until the user explicitly provides it.
 
 ---
 
@@ -566,8 +615,11 @@ Do **not** begin Phase 5 until the user explicitly provides it.
 - **Phase 4 — Backend & EVE integration:** incremental EVE reader, SQLite storage
   with dedup, Flask API (status/alerts/stats), background worker, 34 Windows
   tests. ✅ code complete; ✅ Kali end-to-end validated manually.
-- **Later phases (order set by the user):** full dashboard UI over the API
-  (Phase 5); optional Telegram notifications.
+- **Phase 5 — SOC dashboard:** dark dashboard (cards, inline-SVG chart, top lists,
+  alerts table with filters/pagination/detail), ~3s polling, XSS-safe; rules
+  rev:2 (priority/classtype). ✅ Windows; ⏳ rules rev:2 + browser pending Kali.
+- **Later phases (order set by the user):** optional Telegram notifications
+  (Phase 6).
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.

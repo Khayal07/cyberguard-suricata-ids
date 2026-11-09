@@ -1,0 +1,91 @@
+# Phase 5 — SOC Dashboard
+
+A dark-themed Security Operations Center dashboard built with **plain HTML, CSS,
+and vanilla JavaScript** (no frameworks, no CDN). It displays **only** data
+returned by the Flask API — it performs no detection and fabricates nothing.
+Suricata remains the sole detection engine.
+
+## Pages
+
+- **`/` (Dashboard)** — summary cards (Total Alerts, Critical sev 1, High sev 2,
+  Suricata Engine status), a hand-built inline-SVG severity distribution chart,
+  Top Source IPs, Top Signatures, and a Recent Alerts table with search/filters,
+  pagination, and a click-to-open alert detail panel.
+- **`/alerts` (Alerts)** — the same alerts table (filters, pagination, detail
+  panel) as a focused full-list view. Shares `dashboard.js`.
+- **`/rule-lab` (Rule Lab)** — unchanged placeholder (Phase 6).
+
+## Data source
+
+| Endpoint | Used for |
+|----------|----------|
+| `GET /api/status` | Suricata Engine card + unavailable/unverified banners |
+| `GET /api/stats`  | Summary cards, severity chart, top IPs, top signatures |
+| `GET /api/alerts` | Recent alerts table (filters, pagination, detail) |
+
+Current real data has **severity 3** and **category "uncategorized"** (the rules
+had no priority/classtype). The repo rules were updated to add `priority` +
+`classtype` (rev:2) — **pending Kali validation** — so future alerts will carry
+severity 1/2 and populate the Critical/High cards.
+
+## Safety / correctness
+
+- **XSS-safe:** every dynamic value is rendered with `textContent` or DOM nodes.
+  There is **no `innerHTML`/`insertAdjacentHTML`/`document.write`** with data, so
+  attacker-controlled fields (HTTP URL, user agent, hostname) cannot inject
+  markup. Verified by `grep` and `node --check`.
+- **No raw payload:** the API omits `raw_json`; the detail panel shows only the
+  structured fields.
+- **Honest status:** the Suricata card reflects the verified process state
+  (`verified_running` / `verified_not_running` / `unverified`) — never a fake
+  "active" state. On a host without `/proc` (Windows) it shows `UNVERIFIED`.
+- **Polling:** every ~3s via `fetch`. Background refreshes do not show the loading
+  row (no flicker) and keep the last rows if a poll fails; the initial load and
+  filter/page changes do show a loading state.
+- **States handled:** loading, empty ("No alerts match…"), API-failure banner,
+  and Suricata unavailable/unverified banner.
+
+## Automated tests
+
+No backend Python changed in Phase 5 (dashboard is front-end + a rules-file edit),
+so the existing suite still applies: `pytest -q` → **34 passed**. The API shapes
+the dashboard depends on (`/api/status`, `/api/stats`, `/api/alerts` incl. filters
+and pagination) are already covered by `tests/test_api.py`.
+
+## Local verification performed (Windows, no Suricata)
+
+Populated a scratch DB from the real fixtures and served the app:
+
+```bash
+CYBERGUARD_EVE_PATH=tests/fixtures/eve_alerts_sample.jsonl \
+CYBERGUARD_DB_PATH=<scratch>/cg.db python -m app.main ingest-once   # read 2, inserted 2
+FLASK_ENV=production FLASK_PORT=5099 CYBERGUARD_DB_PATH=<scratch>/cg.db python -m app.main
+```
+
+- `GET /` and `GET /alerts` → HTTP 200.
+- `GET /api/stats` → `{total:2, by_severity:{"3":2}, by_signature:{…}, by_src_ip:{"127.0.0.1":2}, last_24h:2}`.
+- `GET /api/alerts?severity=3` → count 2; `GET /api/alerts?from=2026-11-10` → count 0.
+- `/api/alerts` response contains **no** `raw_json`.
+- `GET /api/status` → `suricata_process = "unverified"` (honest on Windows).
+
+## Manual test checklist (run in a browser — e.g. Kali Firefox)
+
+- [ ] Dashboard loads at `http://127.0.0.1:5000/` with the dark SOC theme.
+- [ ] Summary cards show Total / Critical / High and the Suricata Engine pill.
+- [ ] With live Suricata running, the engine pill shows **"SURICATA RUNNING
+      (verified)"**; stop Suricata → it shows **NOT RUNNING** and the warn banner
+      appears.
+- [ ] Severity distribution chart renders bars per severity with counts.
+- [ ] Top Source IPs and Top Signatures lists populate with bars.
+- [ ] Recent Alerts table lists alerts newest-first with severity badges.
+- [ ] Clicking a row opens the detail panel with all fields; Esc / × closes it.
+- [ ] Filters work: severity, signature, source IP, search (q), and From/To dates.
+- [ ] Pagination: Next/Prev move through pages; buttons disable at the ends.
+- [ ] Generate a new lab alert (`/cyberguard-test`) → it appears within ~3s
+      without a full-page reload or visible flicker.
+- [ ] Stop the backend → the API-failure banner appears and the last data stays.
+- [ ] Inject a marker in a URL (e.g. `/cyberguard-test?x=<b>hi</b>`) → the detail
+      panel shows it as literal text (no bold), confirming XSS-safe rendering.
+
+> Browser/visual validation on the Kali VM is pending (to be run by the user);
+> the data layer and page delivery were verified on Windows as above.

@@ -18,25 +18,82 @@
   </header>
 
   <main class="container">
+    <div id="api-banner" class="banner banner--error" role="alert"></div>
+    <div id="suricata-banner" class="banner banner--warn" role="status"></div>
+
     <section class="card">
-      <h2>Alerts</h2>
+      <h2>All Alerts</h2>
       <p class="muted">
-        Genuine Suricata alerts will appear here once the detection engine is
-        configured and events are ingested (a later phase). No alerts are
-        fabricated.
+        Genuine Suricata alerts, newest first. Detection happens only in Suricata;
+        this view just displays what the API returns.
       </p>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Time</th><th>Signature</th><th>SID</th>
-            <th>Severity</th><th>Source</th><th>Destination</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="6" class="muted">No alerts yet.</td></tr>
-        </tbody>
-      </table>
+
+      <div class="filters">
+        <div class="field">
+          <label for="f-severity">Severity</label>
+          <select id="f-severity">
+            <option value="">All</option>
+            <option value="1">1 — Critical</option>
+            <option value="2">2 — High</option>
+            <option value="3">3 — Medium</option>
+            <option value="4">4 — Low</option>
+            <option value="5">5 — Info</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-signature">Signature</label>
+          <input id="f-signature" type="text" placeholder="contains…" />
+        </div>
+        <div class="field">
+          <label for="f-src-ip">Source IP</label>
+          <input id="f-src-ip" type="text" placeholder="exact" />
+        </div>
+        <div class="field">
+          <label for="f-q">Search</label>
+          <input id="f-q" type="text" placeholder="sig / url / ip" />
+        </div>
+        <div class="field">
+          <label for="f-from">From</label>
+          <input id="f-from" type="date" />
+        </div>
+        <div class="field">
+          <label for="f-to">To</label>
+          <input id="f-to" type="date" />
+        </div>
+        <button class="btn" id="f-apply" type="button">Apply</button>
+        <button class="btn btn--ghost" id="f-clear" type="button">Clear</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Time (UTC)</th><th>Severity</th><th>Signature</th><th>SID</th>
+              <th>Source</th><th>Destination</th><th>Proto</th><th>URL</th>
+            </tr>
+          </thead>
+          <tbody id="alerts-tbody">
+            <tr class="state-row"><td colspan="8"><span class="loading-dot"></span>Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <button class="btn btn--ghost" id="page-prev" type="button" disabled>‹ Prev</button>
+        <span class="page-info" id="page-info">—</span>
+        <button class="btn btn--ghost" id="page-next" type="button" disabled>Next ›</button>
+      </div>
     </section>
   </main>
+
+  <aside id="detail-panel" class="detail" aria-hidden="true">
+    <div class="detail__head">
+      <h2 style="margin:0;">Alert Detail</h2>
+      <button class="detail__close" id="detail-close" type="button" aria-label="Close">×</button>
+    </div>
+    <dl id="detail-content"></dl>
+  </aside>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

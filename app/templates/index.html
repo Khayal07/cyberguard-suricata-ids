@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CyberGuard — Dashboard</title>
+  <title>CyberGuard — SOC Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 </head>
 <body>
   <header class="topbar">
     <h1>CyberGuard</h1>
-    <p class="subtitle">Suricata-Powered Network Intrusion Detection</p>
+    <p class="subtitle">Suricata-Powered SOC Dashboard</p>
     <nav class="nav">
       <a href="/">Dashboard</a>
       <a href="/alerts">Alerts</a>
@@ -18,35 +18,117 @@
   </header>
 
   <main class="container">
-    <section class="card">
-      <h2>Detection Engine Status</h2>
-      <div id="engine-status" class="status status--unknown">Checking…</div>
-      <p id="engine-message" class="muted"></p>
-      <dl class="meta">
-        <dt>EVE JSON path</dt><dd id="eve-path">—</dd>
-        <dt>EVE JSON present</dt><dd id="eve-exists">—</dd>
-        <dt>Last event seen</dt><dd id="last-event">—</dd>
-        <dt>Last alert ingested</dt><dd id="last-ingested">—</dd>
-        <dt>Invalid EVE lines</dt><dd id="invalid-lines">—</dd>
-        <dt>Stored alerts</dt><dd id="alert-count">—</dd>
-      </dl>
+    <div id="api-banner" class="banner banner--error" role="alert"></div>
+    <div id="suricata-banner" class="banner banner--warn" role="status"></div>
+
+    <!-- Summary cards -->
+    <section class="grid grid--stats">
+      <div class="card stat">
+        <span class="stat__label">Total Alerts</span>
+        <span class="stat__value" id="stat-total">—</span>
+        <span class="muted" id="stat-last24">last 24h: —</span>
+      </div>
+      <div class="card stat">
+        <span class="stat__label">Critical (sev 1)</span>
+        <span class="stat__value stat__value--crit" id="stat-critical">—</span>
+      </div>
+      <div class="card stat">
+        <span class="stat__label">High (sev 2)</span>
+        <span class="stat__value stat__value--high" id="stat-high">—</span>
+      </div>
+      <div class="card stat">
+        <span class="stat__label">Suricata Engine</span>
+        <span id="suricata-state" class="status status--unknown">Checking…</span>
+        <span class="muted" id="suricata-detail">—</span>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>API Health</h2>
-      <div id="api-health" class="status status--unknown">Checking…</div>
+    <!-- Panels: chart + top lists -->
+    <section class="grid grid--panels">
+      <div class="card">
+        <h2>Alert Distribution by Severity</h2>
+        <div id="severity-chart"><p class="muted">Loading…</p></div>
+      </div>
+      <div class="card">
+        <h2>Top Source IPs</h2>
+        <ul class="toplist" id="top-src-ips"><li class="muted">Loading…</li></ul>
+      </div>
+      <div class="card">
+        <h2>Top Signatures</h2>
+        <ul class="toplist" id="top-signatures"><li class="muted">Loading…</li></ul>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>About</h2>
-      <p>
-        Suricata is the central detection engine. It inspects network traffic
-        (live or authorized PCAP), evaluates it against rules, and writes
-        genuine events to EVE JSON. This application only reads, stores, and
-        displays those events — it never performs detection itself.
-      </p>
+    <!-- Alerts table -->
+    <section class="card" style="margin-top:1rem;">
+      <h2>Recent Alerts</h2>
+
+      <div class="filters">
+        <div class="field">
+          <label for="f-severity">Severity</label>
+          <select id="f-severity">
+            <option value="">All</option>
+            <option value="1">1 — Critical</option>
+            <option value="2">2 — High</option>
+            <option value="3">3 — Medium</option>
+            <option value="4">4 — Low</option>
+            <option value="5">5 — Info</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-signature">Signature</label>
+          <input id="f-signature" type="text" placeholder="contains…" />
+        </div>
+        <div class="field">
+          <label for="f-src-ip">Source IP</label>
+          <input id="f-src-ip" type="text" placeholder="exact" />
+        </div>
+        <div class="field">
+          <label for="f-q">Search</label>
+          <input id="f-q" type="text" placeholder="sig / url / ip" />
+        </div>
+        <div class="field">
+          <label for="f-from">From</label>
+          <input id="f-from" type="date" />
+        </div>
+        <div class="field">
+          <label for="f-to">To</label>
+          <input id="f-to" type="date" />
+        </div>
+        <button class="btn" id="f-apply" type="button">Apply</button>
+        <button class="btn btn--ghost" id="f-clear" type="button">Clear</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Time (UTC)</th><th>Severity</th><th>Signature</th><th>SID</th>
+              <th>Source</th><th>Destination</th><th>Proto</th><th>URL</th>
+            </tr>
+          </thead>
+          <tbody id="alerts-tbody">
+            <tr class="state-row"><td colspan="8"><span class="loading-dot"></span>Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <button class="btn btn--ghost" id="page-prev" type="button" disabled>‹ Prev</button>
+        <span class="page-info" id="page-info">—</span>
+        <button class="btn btn--ghost" id="page-next" type="button" disabled>Next ›</button>
+      </div>
     </section>
   </main>
+
+  <!-- Alert detail slide-over -->
+  <aside id="detail-panel" class="detail" aria-hidden="true">
+    <div class="detail__head">
+      <h2 style="margin:0;">Alert Detail</h2>
+      <button class="detail__close" id="detail-close" type="button" aria-label="Close">×</button>
+    </div>
+    <dl id="detail-content"></dl>
+  </aside>
 
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
