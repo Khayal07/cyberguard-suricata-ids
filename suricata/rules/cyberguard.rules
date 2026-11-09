@@ -4,9 +4,9 @@
 # Do not reformat or wrap the rule lines.
 #
 # rev:2 (Phase 5) adds priority + classtype so alerts carry a real severity and
-# category. PENDING KALI VALIDATION: these edits have NOT yet been validated on
-# the VM — run `sudo suricata -T -c /etc/suricata/suricata.yaml -v` and the lab
-# tests on Kali to confirm they load and fire before relying on them.
+# category. Validated on the Kali VM: `sudo suricata -T -c /etc/suricata/suricata.yaml -v`
+# loaded 2 rules, 0 failed; after restart, /cyberguard-test produced severity 1
+# (sid 1000001) and /cyberguard-warning produced severity 2 (sid 1000002).
 #
 # sid 1000001 — "CyberGuard Test Alert"
 #   Fires on an HTTP request to a server (established flow) whose URI contains

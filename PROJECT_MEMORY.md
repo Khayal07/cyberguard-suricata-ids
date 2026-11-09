@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 5 — SOC Dashboard (COMPLETE on Windows; rules rev:2 + browser visuals pending Kali validation)
+**Current phase:** Phase 5 — SOC Dashboard (COMPLETE; validated manually on the Kali VM — rules rev:2 loaded, dashboard verified in Firefox)
 
 ---
 
@@ -186,8 +186,10 @@ these are deployed to `/var/lib/suricata/rules/cyberguard.rules`.
 | 1000002 | CyberGuard Warning Alert| http     | to_server, established  | `/cyberguard-warning`     | priority:2 → sev 2 (High)     |
 
 **rev:2 (Phase 5):** added `priority` + `classtype:misc-activity` to both rules so
-alerts carry a real severity/category (`msg`/`sid`/`content` unchanged). **PENDING
-KALI VALIDATION** — not yet run through `suricata -T` / live tests on the VM.
+alerts carry a real severity/category (`msg`/`sid`/`content` unchanged).
+**Validated on the Kali VM:** `suricata -T` loaded 2 rules (0 failed); after
+restart, `/cyberguard-test` → severity 1 (sid 1000001), `/cyberguard-warning` →
+severity 2 (sid 1000002).
 
 **Status (rev:1, Phase 3):** both rules load successfully (0 failed) **and are
 verified
@@ -374,14 +376,14 @@ docs):**
 - Background daemon worker polls every `CYBERGUARD_POLL_SECONDS`; `ingest-once` CLI.
 - 34 pytest tests pass on Windows with no Suricata (see section 16).
 
-**Phase 5 (SOC dashboard — complete on Windows; rules rev:2 + browser pending):**
+**Phase 5 (SOC dashboard — COMPLETE; validated manually on the Kali VM):**
 - Built the dark SOC dashboard (cards, inline-SVG severity chart, top IPs/
   signatures, alerts table with filters/pagination/detail) on `/` and a focused
   alerts view on `/alerts`; `rule_lab` stays a Phase 6 placeholder.
 - ~3s polling with loading/empty/API-failure/Suricata-unverified states, no
   flicker; XSS-safe rendering (no `innerHTML`; `node --check` clean).
-- Updated `suricata/rules/cyberguard.rules` to rev:2 (priority + classtype) —
-  **pending Kali validation**.
+- Updated `suricata/rules/cyberguard.rules` to rev:2 (priority + classtype);
+  **validated on the Kali VM** (2 rules loaded, severity 1/2 produced).
 - No backend Python change; 34 pytest tests still pass. Local serve + curl
   confirmed pages 200 and `/api/stats`/`/api/alerts` return real data, no
   `raw_json` exposed.
@@ -535,8 +537,17 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
   `/api/status` → `suricata_process: unverified` (honest on Windows). ✅
 - `node --check dashboard.js` clean; no `innerHTML`/`insertAdjacentHTML`/
   `document.write` with data. ✅
-- Browser/visual validation (chart, badges, detail panel, live polling) →
-  **pending on the Kali VM** (checklist in `docs/phase5-dashboard.md`). ⏳
+
+**Phase 5 end-to-end on the Kali VM (verified manually):**
+- `sudo suricata -T -c /etc/suricata/suricata.yaml -v` → **2 rules loaded, 0
+  failed** (rev:2); Suricata restarted. ✅
+- New requests produced genuine alerts: `/cyberguard-test` → **severity 1**
+  (sid 1000001), `/cyberguard-warning` → **severity 2** (sid 1000002). ✅
+- Dashboard in Kali Firefox showed **Total 10, Critical 1, High 1**, the severity
+  chart, top source IPs/signatures, the filterable paginated table, and
+  **"SURICATA RUNNING (verified)"**. ✅
+- Older 8 alerts (written under rev:1) remained **severity 3** — historical EVE
+  records are not rewritten. ✅
 
 ---
 
@@ -569,32 +580,27 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 - Reading `/var/log/suricata/eve.json` on the VM requires the backend to have read
   access (file is root-owned, world-readable in this setup).
 - Dashboard not secured for public exposure (localhost-only by design).
-- Rules `cyberguard.rules` rev:2 (priority/classtype) is **not yet validated on the
-  Kali VM** (`suricata -T` + live tests pending); existing alerts remain severity 3
-  until the VM reloads rev:2, so the Critical/High cards read 0 with current data.
-- SOC dashboard **browser/visual** behavior not yet validated on the VM (only the
-  Windows data layer was checked); see `docs/phase5-dashboard.md` checklist.
+- The 8 alerts written under rules rev:1 remain **severity 3 / "uncategorized"**;
+  only alerts generated after rev:2 loaded carry severity 1/2 (EVE records are
+  historical and are not rewritten).
 
 ---
 
 ## 19. Current Development Phase
 
-**Phase 5 — SOC Dashboard: COMPLETE on Windows** (34 tests pass; dashboard data
-layer verified via local serve + curl). **Pending on the Kali VM:** validate rules
-rev:2 (`suricata -T` + live tests) and the dashboard's browser/visual behavior
-(checklist in `docs/phase5-dashboard.md`). Awaiting the user's explicit **Phase 6**
-prompt. (Phase 4 end-to-end was validated on the VM — see section 16.)
+**Phase 5 — SOC Dashboard: COMPLETE** (34 tests pass; dashboard data layer verified
+on Windows) **and validated manually on the Kali VM** — rules rev:2 loaded
+(2 rules, 0 failed), severity 1/2 produced, dashboard verified in Firefox
+(Total 10, Critical 1, High 1, "SURICATA RUNNING (verified)"); see section 16.
+Awaiting the user's explicit **Phase 6** prompt.
 
 ---
 
 ## 20. Exact Next Steps
 
-1. **(User, on the Kali VM)** Deploy rules rev:2 (`cyberguard.rules` →
-   `/var/lib/suricata/rules/`), run `sudo suricata -T …` to confirm they load,
-   send lab traffic, and confirm new alerts show severity 1/2 and the dashboard's
-   Critical/High cards update. Walk the `docs/phase5-dashboard.md` browser checklist.
-2. Wait for the user's explicit **Phase 6** prompt (expected: optional Telegram
-   notifications).
+Wait for the user's explicit **Phase 6** prompt (expected: optional Telegram
+notifications). Phase 5 is fully validated on the Kali VM; nothing further is
+required there.
 
 Do **not** begin Phase 6 until the user explicitly provides it.
 
@@ -617,7 +623,7 @@ Do **not** begin Phase 6 until the user explicitly provides it.
   tests. ✅ code complete; ✅ Kali end-to-end validated manually.
 - **Phase 5 — SOC dashboard:** dark dashboard (cards, inline-SVG chart, top lists,
   alerts table with filters/pagination/detail), ~3s polling, XSS-safe; rules
-  rev:2 (priority/classtype). ✅ Windows; ⏳ rules rev:2 + browser pending Kali.
+  rev:2 (priority/classtype). ✅ Windows; ✅ Kali validated manually.
 - **Later phases (order set by the user):** optional Telegram notifications
   (Phase 6).
 

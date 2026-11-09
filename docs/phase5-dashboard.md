@@ -23,10 +23,12 @@ Suricata remains the sole detection engine.
 | `GET /api/stats`  | Summary cards, severity chart, top IPs, top signatures |
 | `GET /api/alerts` | Recent alerts table (filters, pagination, detail) |
 
-Current real data has **severity 3** and **category "uncategorized"** (the rules
-had no priority/classtype). The repo rules were updated to add `priority` +
-`classtype` (rev:2) — **pending Kali validation** — so future alerts will carry
-severity 1/2 and populate the Critical/High cards.
+The rules were updated to add `priority` + `classtype` (rev:2) and **validated on
+the Kali VM**: `suricata -T` loaded 2 rules (0 failed); after restart,
+`/cyberguard-test` produced **severity 1** (sid 1000001) and `/cyberguard-warning`
+produced **severity 2** (sid 1000002), populating the Critical/High cards. The
+older 8 alerts (written under rev:1) remain **severity 3 / "uncategorized"** — EVE
+records are historical and are not rewritten.
 
 ## Safety / correctness
 
@@ -87,5 +89,14 @@ FLASK_ENV=production FLASK_PORT=5099 CYBERGUARD_DB_PATH=<scratch>/cg.db python -
 - [ ] Inject a marker in a URL (e.g. `/cyberguard-test?x=<b>hi</b>`) → the detail
       panel shows it as literal text (no bold), confirming XSS-safe rendering.
 
-> Browser/visual validation on the Kali VM is pending (to be run by the user);
-> the data layer and page delivery were verified on Windows as above.
+## Kali VM validation (COMPLETE — verified manually)
+
+- `sudo suricata -T -c /etc/suricata/suricata.yaml -v` → **2 rules loaded, 0
+  failed** (rev:2). Suricata restarted.
+- New requests produced genuine alerts: `/cyberguard-test` → **severity 1**
+  (sid 1000001), `/cyberguard-warning` → **severity 2** (sid 1000002).
+- Dashboard in Kali Firefox showed **Total 10, Critical 1, High 1**, the severity
+  distribution chart, top source IPs / signatures, the filterable paginated alerts
+  table, and **"SURICATA RUNNING (verified)"**.
+- The older 8 alerts (written under rev:1) remained severity 3 — historical EVE
+  records are not rewritten.
