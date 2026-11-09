@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 1 — Project Structure & Python Environment (COMPLETE)
+**Current phase:** Phase 2 — Suricata IDS Setup (COMPLETE — performed manually on the Kali VM)
 
 ---
 
@@ -91,11 +91,15 @@ cyberguard-suricata-ids/
 │       └── js/dashboard.js    # fetches /api/status + /api/health
 ├── suricata/
 │   ├── config/.gitkeep        # future suricata.yaml / threshold config
-│   └── rules/local.rules      # custom lab rules (SID >= 1000000; none active yet)
+│   └── rules/
+│       ├── cyberguard.rules   # source-of-truth rules (sid 1000001/1000002); active on VM
+│       └── local.rules        # placeholder/scratch (not referenced by VM config)
 ├── lab/README.md              # authorized local lab rules of engagement
 ├── tests/test_eve_reader.py   # pytest suite (8 tests)
 ├── data/.gitkeep              # runtime DB/EVE dir (contents git-ignored)
-├── docs/architecture.md       # architecture explanation
+├── docs/
+│   ├── architecture.md        # architecture explanation
+│   └── suricata-setup.md      # Phase 2 Suricata install/config (manual, Kali VM)
 ├── conftest.py                # makes project root importable for pytest
 ├── requirements.txt           # Flask, python-dotenv, pytest
 ├── README.md
@@ -122,6 +126,11 @@ cyberguard-suricata-ids/
 - **Python:** 3.12.10 on Windows (`python`). Virtual environment at `.venv/`.
 - **Linux environment for Suricata:** Kali Linux 2026.3 (Debian-based) running
   in an Oracle VirtualBox VM.
+- **Windows ↔ Kali workflow:** code is written on **Windows** (VS Code) and
+  **pushed to GitHub**; the repo is then **cloned on the Kali VM**, where
+  Suricata and (later) the Python backend run together. Backend+Suricata
+  integration on the VM is planned for **Phase 4**. Runtime artifacts
+  (`eve.json`, Suricata logs, SQLite DB) stay on the VM and are git-ignored.
 - **Fallback plan:** if live traffic capture is unreliable, use Suricata offline
   PCAP analysis against controlled lab traffic. Never fabricate detections.
 
@@ -129,31 +138,55 @@ cyberguard-suricata-ids/
 
 ## 6. Suricata Installation Details
 
-Not yet installed. To be documented here once a phase covers installation
-(version, install method, service/run mode, interface or PCAP mode).
+*Performed and verified manually on the Kali Linux 2026.3 VM (VirtualBox). Not
+run on Windows.* Full write-up: [`docs/suricata-setup.md`](docs/suricata-setup.md).
+
+- **OS/host:** Kali GNU/Linux Rolling 2026.3 (Debian-based), kernel
+  7.1.5+kali-amd64, Oracle VirtualBox NAT, `eth0 = 10.0.2.15/24`.
+- **Suricata:** 8.0.7 RELEASE, installed via `sudo apt install -y suricata`
+  (Kali repo).
+- **Mode:** IDS (default "IDS mode by default") — detection only, no IPS/blocking.
+- **Service:** not auto-started on Kali; started manually.
+- **Capture:** live on interface `lo` (loopback) for local tests.
 
 ---
 
 ## 7. Suricata Configuration Paths
 
-Not yet configured. Will record: `suricata.yaml` path, rule file paths, EVE JSON
-output path, HOME_NET/EXTERNAL_NET settings, and run command.
+*(On the Kali VM — verified manually.)*
+
+- Main config: `/etc/suricata/suricata.yaml`
+- Original backup: `/etc/suricata/suricata.yaml.orig`
+- **Only change:** `rule-files` entry changed from `suricata.rules` to
+  `cyberguard.rules`.
+- Default rule path: `/var/lib/suricata/rules` → active file
+  `/var/lib/suricata/rules/cyberguard.rules`.
 
 ---
 
 ## 8. Custom Rule Definitions and Signature IDs
 
-None yet. Will record each custom rule: `sid`, message, protocol, direction,
-matching logic, and the lab traffic that triggers it. Custom SIDs will use the
-local range (≥ 1000000) to avoid clashing with shipped rules.
+Source-of-truth copy in the repo: `suricata/rules/cyberguard.rules`. On the VM
+these are deployed to `/var/lib/suricata/rules/cyberguard.rules`.
+
+| sid     | message                 | protocol | direction               | match (http.uri contains) |
+|---------|-------------------------|----------|-------------------------|---------------------------|
+| 1000001 | CyberGuard Test Alert   | http     | to_server, established  | `/cyberguard-test`        |
+| 1000002 | CyberGuard Warning Alert| http     | to_server, established  | `/cyberguard-warning`     |
+
+**Status:** both rules **LOAD successfully** (config test: 2 rules loaded, 0
+failed) but have **NOT yet been tested against real traffic** — that is Phase 3.
+Local custom SID range is ≥ 1000000 to avoid clashing with shipped rules.
 
 ---
 
 ## 9. EVE JSON Location
 
-Not yet defined. Will be the Suricata EVE output file (e.g.
-`/var/log/suricata/eve.json` or a project-local path). EVE JSON is runtime output
-and is **git-ignored**.
+On the Kali VM: `/var/log/suricata/eve.json` (enabled by default). Confirmed
+**growing** (stats events appended) while Suricata ran. EVE JSON is runtime
+output and is **git-ignored** — never committed. In local Windows dev the Flask
+app's default `EVE_JSON_PATH` is the project-local `data/eve.json` (overridden on
+the VM via `.env`).
 
 ---
 
@@ -248,6 +281,16 @@ Table `alerts` (created by `database.init_db()`, empty until ingestion phase):
 - Dashboard (HTML/CSS/vanilla JS) showing honest engine status.
 - Runs without Suricata and reports the engine as NOT CONFIGURED (no fake state).
 
+**Phase 2 (complete — performed manually on the Kali VM; documentation only in
+this repo):**
+- Suricata 8.0.7 installed and configured on the Kali Linux 2026.3 VM (IDS mode).
+- `rule-files` pointed at `cyberguard.rules`; two custom rules (sid 1000001/
+  1000002) load successfully (2 loaded, 0 failed).
+- EVE JSON confirmed writing/growing at `/var/log/suricata/eve.json`.
+- Added `suricata/rules/cyberguard.rules` (source of truth) and
+  `docs/suricata-setup.md` to the repo.
+- Rules not yet tested against live traffic (Phase 3).
+
 ---
 
 ## 15. Commands Used to Run the Application
@@ -265,7 +308,19 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pytest -q
 ```
 
-Suricata run commands will be added when the engine is installed (later phase).
+**Suricata (on the Kali VM — verified manually):**
+
+```bash
+# Install (Kali repo)
+sudo apt install -y suricata
+
+# Validate config + load rules (no capture)
+sudo suricata -T -c /etc/suricata/suricata.yaml -v
+#   → "successfully loaded"; 2 rules successfully loaded, 0 failed
+
+# Live capture on loopback for local tests (daemon)
+sudo suricata -c /etc/suricata/suricata.yaml -i lo -D --pidfile /tmp/suricata.pid
+```
 
 ---
 
@@ -292,6 +347,16 @@ Suricata run commands will be added when the engine is installed (later phase).
 - No secret files staged: `.env`, `.venv/`, `data/cyberguard.db` confirmed
   git-ignored. ✅
 
+**Phase 2 (verified manually on the Kali VM — NOT on Windows):**
+- `suricata -V` / install → Suricata 8.0.7 RELEASE (Kali repo). ✅
+- `suricata -T -c /etc/suricata/suricata.yaml -v` → "successfully loaded";
+  **2 rules successfully loaded, 0 failed.** ✅
+- Live capture on `lo` started as daemon; `/var/log/suricata/eve.json` confirmed
+  **growing** (stats events). ✅
+- Harmless warning observed: `lo does not support SIOCETHTOOL ioctl` (expected on
+  loopback; no impact).
+- Rules **not yet tested against real traffic** (Phase 3). ⏳
+
 ---
 
 ## 17. Errors Encountered and How They Were Fixed
@@ -303,26 +368,32 @@ to import the `app` package — handled by adding a root `conftest.py`.)
 
 ## 18. Known Limitations
 
-- Linux/Suricata environment not yet selected or installed.
-- No live traffic validated yet; PCAP fallback may be used.
+- Suricata runs as **root** and captures on **`lo` only**; `eth0` is **not**
+  monitored in this setup, so only local (loopback) traffic is inspected.
+- Suricata service is started **manually** (not enabled on boot).
+- Custom rules load successfully but are **not yet validated against live
+  traffic** (Phase 3).
+- Backend and Suricata do not yet run together; integration on the VM is Phase 4.
 - Dashboard not secured for public exposure (localhost-only by design).
 
 ---
 
 ## 19. Current Development Phase
 
-**Phase 1 — Project Structure & Python Environment: COMPLETE.** Awaiting the
-user's explicit Phase 2 prompt.
+**Phase 2 — Suricata IDS Setup: COMPLETE** (performed manually on the Kali VM;
+documented and committed here). Awaiting the user's explicit **Phase 3** prompt.
 
 ---
 
 ## 20. Exact Next Steps
 
-Wait for the user's next phase prompt (Phase 2). Likely candidates (not started
+Wait for the user's next phase prompt (**Phase 3**). Expected focus (not started
 until explicitly requested):
-1. Prepare the Kali Linux 2026.3 VM (Oracle VirtualBox) for Suricata.
-2. Install Suricata and document version + config paths.
-3. Configure EVE JSON output and author a minimal custom lab rule.
+1. Generate controlled lab HTTP traffic on the VM containing `/cyberguard-test`
+   and `/cyberguard-warning`.
+2. Confirm Suricata emits genuine alert events (sid 1000001/1000002) to
+   `/var/log/suricata/eve.json`.
+3. Verify the EVE JSON alert structure that the Python reader will later ingest.
 
 Do **not** begin any of these until the user explicitly provides the phase.
 
@@ -334,9 +405,13 @@ Do **not** begin any of these until the user explicitly provides the phase.
   verification. ✅ (`0fba761`)
 - **Phase 1 — Project structure & Python environment:** full folder layout, venv,
   minimal Flask app, honest status endpoints, dashboard shell. ✅
-- **Later phases (order set by the user):** Linux + Suricata install & config;
-  custom lab rules + verify genuine EVE JSON; Python ingestion into SQLite; full
-  Flask API over stored events; full dashboard; optional Telegram notifications.
+- **Phase 2 — Suricata IDS setup:** Suricata 8.0.7 installed & configured on the
+  Kali VM (IDS mode); custom rules load (0 failed); EVE JSON confirmed writing.
+  Documented in the repo. ✅ (manual on VM)
+- **Later phases (order set by the user):** test rules against live lab traffic +
+  verify genuine EVE JSON alerts (Phase 3); Python ingestion into SQLite; backend
+  +Suricata integration on the VM (Phase 4); full Flask API over stored events;
+  full dashboard; optional Telegram notifications.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.

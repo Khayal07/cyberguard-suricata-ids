@@ -1,5 +1,9 @@
 # CyberGuard — Custom Suricata detection rules (local lab)
 #
+# NOTE: As of Phase 2 the active source-of-truth rules file is
+# `cyberguard.rules` (loaded by Suricata on the Kali VM). This file is kept as a
+# placeholder/scratch space and is not referenced by the VM configuration.
+#
 # These rules run inside Suricata, the ONLY detection engine in this project.
 # They are authored and tested against authorized, controlled lab traffic using
 # harmless HTTP markers. No live rules are defined yet — rule authoring is a
