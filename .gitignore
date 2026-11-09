@@ -1,0 +1,89 @@
+# ---------------------------------------------------------------------------
+# CyberGuard .gitignore
+# Excludes secrets, generated files, environments, logs, and OS/editor noise.
+# ---------------------------------------------------------------------------
+
+# --- Secrets & environment ---
+.env
+.env.*
+!.env.example
+*.secret
+*.token
+secrets/
+credentials.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Databases (generated at runtime) ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+cyberguard.db
+
+# --- Suricata runtime output & logs ---
+# EVE JSON and Suricata logs are generated output, not source.
+eve.json
+*.eve.json
+fast.log
+stats.log
+suricata.log
+*.log
+logs/
+suricata-logs/
+
+# --- PCAP capture files (can be large / may contain sensitive traffic) ---
+# Keep small sample lab PCAPs explicitly by force-adding them if needed.
+*.pcap
+*.pcapng
+*.cap
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Node (only if tooling is ever added; app uses vanilla JS) ---
+node_modules/
