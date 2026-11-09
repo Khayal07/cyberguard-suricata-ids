@@ -137,3 +137,23 @@ passes. If blocked, explain and wait for the user.
 - `.gitignore` — excludes secrets, venvs, logs, databases, PCAPs, caches.
 
 Keep both memory files accurate. They are how future sessions continue correctly.
+
+---
+
+## 10. Working Rules (Permanent)
+
+- Suricata runs ONLY on the Kali Linux 2026.3 VM. Never run Suricata, WSL, or apt
+  on this Windows machine. Anything validated on the VM is recorded as "verified
+  manually on the Kali VM", never as something Claude verified.
+- Suricata is the only detection engine. Python reads, stores and serves; it never
+  classifies traffic or generates alerts. No fake or hardcoded alerts.
+- Never fabricate test results. Show actual command output.
+- Before every commit: show git diff and wait for my approval.
+- Commits use my own git identity, no Co-authored-by trailers, no force push, no
+  amend without approval. After push, show git log -1 and git status.
+- Never commit eve.json, DB files, logs, .env or secrets.
+- Finish each phase with PROJECT_MEMORY.md updated, then STOP and wait for the next
+  phase prompt.
+- Phase map: 0 foundation, 1 backend, 2 Suricata setup, 3 rules and tests, 4 EVE
+  integration, 5 dashboard, 6 Rule Lab and end-to-end tests, 7 optional Telegram,
+  8 documentation and presentation.
