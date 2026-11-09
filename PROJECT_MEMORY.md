@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 2 — Suricata IDS Setup (COMPLETE — performed manually on the Kali VM)
+**Current phase:** Phase 3 — Detection Tests (COMPLETE — executed manually on the Kali VM)
 
 ---
 
@@ -94,12 +94,15 @@ cyberguard-suricata-ids/
 │   └── rules/
 │       ├── cyberguard.rules   # source-of-truth rules (sid 1000001/1000002); active on VM
 │       └── local.rules        # placeholder/scratch (not referenced by VM config)
-├── lab/README.md              # authorized local lab rules of engagement
+├── lab/
+│   ├── README.md              # authorized local lab rules of engagement + server usage
+│   └── server.py              # harmless localhost HTTP test server (stdlib; Windows-only so far)
 ├── tests/test_eve_reader.py   # pytest suite (8 tests)
 ├── data/.gitkeep              # runtime DB/EVE dir (contents git-ignored)
 ├── docs/
 │   ├── architecture.md        # architecture explanation
-│   └── suricata-setup.md      # Phase 2 Suricata install/config (manual, Kali VM)
+│   ├── suricata-setup.md      # Phase 2 Suricata install/config (manual, Kali VM)
+│   └── phase3-detection-tests.md  # Phase 3 detection test results (manual, Kali VM)
 ├── conftest.py                # makes project root importable for pytest
 ├── requirements.txt           # Flask, python-dotenv, pytest
 ├── README.md
@@ -174,9 +177,11 @@ these are deployed to `/var/lib/suricata/rules/cyberguard.rules`.
 | 1000001 | CyberGuard Test Alert   | http     | to_server, established  | `/cyberguard-test`        |
 | 1000002 | CyberGuard Warning Alert| http     | to_server, established  | `/cyberguard-warning`     |
 
-**Status:** both rules **LOAD successfully** (config test: 2 rules loaded, 0
-failed) but have **NOT yet been tested against real traffic** — that is Phase 3.
-Local custom SID range is ≥ 1000000 to avoid clashing with shipped rules.
+**Status:** both rules load successfully (0 failed) **and are now verified
+against live lab traffic in Phase 3** — `/cyberguard-test` → sid 1000001,
+`/cyberguard-warning` → sid 1000002, both produced genuine EVE JSON alerts
+(see section 16 and `docs/phase3-detection-tests.md`). Local custom SID range is
+≥ 1000000 to avoid clashing with shipped rules.
 
 ---
 
@@ -291,6 +296,20 @@ this repo):**
   `docs/suricata-setup.md` to the repo.
 - Rules not yet tested against live traffic (Phase 3).
 
+**Phase 3 (complete — executed manually on the Kali VM; repo gains lab files +
+docs):**
+- Verified genuine detections on loopback: `/cyberguard-test` → "CyberGuard Test
+  Alert" (sid 1000001), `/cyberguard-warning` → "CyberGuard Warning Alert" (sid
+  1000002); `/index.html` → no alert. All PASS.
+- Disable/restore experiment proved detection depends on the Suricata rule:
+  commenting out the Test Alert rule stopped new Test Alerts (count unchanged
+  while Warning kept firing); restoring it resumed detection.
+- Confirmed the real EVE alert field set the Python reader will ingest.
+- Added `lab/server.py` (harmless localhost test server, written on Windows, not
+  yet run on the VM), updated `lab/README.md`, added
+  `docs/phase3-detection-tests.md`, and commented `cyberguard.rules`
+  (rule lines kept byte-identical).
+
 ---
 
 ## 15. Commands Used to Run the Application
@@ -320,6 +339,26 @@ sudo suricata -T -c /etc/suricata/suricata.yaml -v
 
 # Live capture on loopback for local tests (daemon)
 sudo suricata -c /etc/suricata/suricata.yaml -i lo -D --pidfile /tmp/suricata.pid
+```
+
+**Phase 3 detection tests (on the Kali VM — verified manually):**
+
+```bash
+# Harmless local test server (manual tests used the stdlib server)
+python3 -m http.server 8000 --bind 127.0.0.1
+# Repo equivalent (not yet run on VM): python lab/server.py --port 8000
+
+# Trigger requests
+curl http://127.0.0.1:8000/index.html          # no alert
+curl http://127.0.0.1:8000/cyberguard-test     # -> sid 1000001
+curl http://127.0.0.1:8000/cyberguard-warning  # -> sid 1000002
+
+# Count alerts by signature (eve.json is cumulative across runs)
+grep '"event_type":"alert"' eve.json \
+  | grep -o '"signature":"[^"]*"' | sort | uniq -c
+
+# Disable / restore the Test Alert rule (sed), verify with:
+grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 restored
 ```
 
 ---
@@ -357,6 +396,20 @@ sudo suricata -c /etc/suricata/suricata.yaml -i lo -D --pidfile /tmp/suricata.pi
   loopback; no impact).
 - Rules **not yet tested against real traffic** (Phase 3). ⏳
 
+**Phase 3 (verified manually on the Kali VM — NOT on Windows):**
+- Scenario A: `GET /index.html` → no alert. **PASS** ✅
+- Scenario B: `GET /cyberguard-test` → "CyberGuard Test Alert" (sid 1000001).
+  **PASS** ✅
+- Scenario C: `GET /cyberguard-warning` → "CyberGuard Warning Alert" (sid
+  1000002). **PASS** ✅
+- Scenario D (disable Test Alert rule, repeat): Test Alert count `1` (unchanged),
+  Warning Alert `2`. **PASS** ✅ (detection depends on the rule)
+- Scenario E (restore rule, send `/cyberguard-test`): Test Alert `2`, Warning
+  Alert `2`. **PASS** ✅
+- Real EVE alert fields seen: `event_type=alert`, src/dest `127.0.0.1`,
+  `dest_port 8000`, `app_proto http`, `http.url`, `http_method GET`,
+  `status 404`, `http_user_agent curl/8.21.0`, `flow` section; timestamps `-0500`.
+
 ---
 
 ## 17. Errors Encountered and How They Were Fixed
@@ -371,8 +424,14 @@ to import the `app` package — handled by adding a root `conftest.py`.)
 - Suricata runs as **root** and captures on **`lo` only**; `eth0` is **not**
   monitored in this setup, so only local (loopback) traffic is inspected.
 - Suricata service is started **manually** (not enabled on boot).
-- Custom rules load successfully but are **not yet validated against live
-  traffic** (Phase 3).
+- Custom rules are now validated against live lab traffic (Phase 3), but only on
+  the **`lo`** interface; `eth0` traffic is not monitored.
+- `eve.json` is **cumulative** across Suricata runs (alert counts are running
+  totals, not per-run).
+- During the Phase 3 disable step, a separate `suricata -T` re-validation was not
+  run after commenting the rule (Suricata still started successfully).
+- `lab/server.py` was written on Windows and **has not yet been run on the VM**
+  (manual tests used `python3 -m http.server`).
 - Backend and Suricata do not yet run together; integration on the VM is Phase 4.
 - Dashboard not secured for public exposure (localhost-only by design).
 
@@ -380,20 +439,19 @@ to import the `app` package — handled by adding a root `conftest.py`.)
 
 ## 19. Current Development Phase
 
-**Phase 2 — Suricata IDS Setup: COMPLETE** (performed manually on the Kali VM;
-documented and committed here). Awaiting the user's explicit **Phase 3** prompt.
+**Phase 3 — Detection Tests: COMPLETE** (executed manually on the Kali VM;
+lab files + docs committed here). Awaiting the user's explicit **Phase 4** prompt.
 
 ---
 
 ## 20. Exact Next Steps
 
-Wait for the user's next phase prompt (**Phase 3**). Expected focus (not started
+Wait for the user's next phase prompt (**Phase 4**). Expected focus (not started
 until explicitly requested):
-1. Generate controlled lab HTTP traffic on the VM containing `/cyberguard-test`
-   and `/cyberguard-warning`.
-2. Confirm Suricata emits genuine alert events (sid 1000001/1000002) to
-   `/var/log/suricata/eve.json`.
-3. Verify the EVE JSON alert structure that the Python reader will later ingest.
+1. Clone the repo onto the Kali VM and run the Flask backend alongside Suricata.
+2. Point the Flask app's `EVE_JSON_PATH` at `/var/log/suricata/eve.json` and
+   ingest genuine alert events into SQLite.
+3. Validate `lab/server.py` on the VM against the live rules.
 
 Do **not** begin any of these until the user explicitly provides the phase.
 
@@ -408,10 +466,12 @@ Do **not** begin any of these until the user explicitly provides the phase.
 - **Phase 2 — Suricata IDS setup:** Suricata 8.0.7 installed & configured on the
   Kali VM (IDS mode); custom rules load (0 failed); EVE JSON confirmed writing.
   Documented in the repo. ✅ (manual on VM)
-- **Later phases (order set by the user):** test rules against live lab traffic +
-  verify genuine EVE JSON alerts (Phase 3); Python ingestion into SQLite; backend
-  +Suricata integration on the VM (Phase 4); full Flask API over stored events;
-  full dashboard; optional Telegram notifications.
+- **Phase 3 — Detection tests:** genuine alerts verified on loopback for sid
+  1000001/1000002; disable/restore experiment proved detection depends on the
+  rule; lab server + test docs added. ✅ (manual on VM)
+- **Later phases (order set by the user):** clone repo on VM and run backend
+  alongside Suricata, ingesting genuine EVE alerts into SQLite (Phase 4); full
+  Flask API over stored events; full dashboard; optional Telegram notifications.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.

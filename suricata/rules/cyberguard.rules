@@ -1,2 +1,15 @@
+# CyberGuard custom detection rules (source of truth).
+# Deployed on the Kali VM to /var/lib/suricata/rules/cyberguard.rules.
+# Local custom SID range (>= 1000000) avoids clashing with vendor-shipped rules.
+# The two rule lines below are byte-identical to what loads on the VM — do not
+# reformat or wrap them.
+#
+# sid 1000001 — "CyberGuard Test Alert"
+#   Fires on an HTTP request to a server (established flow) whose URI contains
+#   "/cyberguard-test". The benign "test" marker used in the lab.
 alert http any any -> any any (msg:"CyberGuard Test Alert"; flow:to_server,established; http.uri; content:"/cyberguard-test"; sid:1000001; rev:1;)
+#
+# sid 1000002 — "CyberGuard Warning Alert"
+#   Fires on an HTTP request to a server (established flow) whose URI contains
+#   "/cyberguard-warning". The "warning" marker used in the lab.
 alert http any any -> any any (msg:"CyberGuard Warning Alert"; flow:to_server,established; http.uri; content:"/cyberguard-warning"; sid:1000002; rev:1;)
