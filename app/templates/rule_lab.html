@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CyberGuard — Rule Lab</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>CyberGuard</h1>
+    <p class="subtitle">Rule Lab</p>
+    <nav class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/alerts">Alerts</a>
+      <a href="/rule-lab">Rule Lab</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Rule Lab</h2>
+      <p class="muted">
+        This page will let you review the custom Suricata detection rules used
+        in the authorized local lab and the harmless HTTP markers that trigger
+        them. Rule authoring and testing is covered in a later phase.
+      </p>
+      <p>
+        Custom rules live in <code>suricata/rules/local.rules</code> and use the
+        local signature ID range (≥ 1000000).
+      </p>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# CyberGuard Python dependencies (minimal).
+# JSON, SQLite, and file processing use the Python standard library.
+
+Flask>=3.0,<4.0
+python-dotenv>=1.0,<2.0
+pytest>=8.0,<9.0

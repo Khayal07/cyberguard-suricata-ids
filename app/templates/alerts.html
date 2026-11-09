@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CyberGuard — Alerts</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>CyberGuard</h1>
+    <p class="subtitle">Security Alerts</p>
+    <nav class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/alerts">Alerts</a>
+      <a href="/rule-lab">Rule Lab</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Alerts</h2>
+      <p class="muted">
+        Genuine Suricata alerts will appear here once the detection engine is
+        configured and events are ingested (a later phase). No alerts are
+        fabricated.
+      </p>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Time</th><th>Signature</th><th>SID</th>
+            <th>Severity</th><th>Source</th><th>Destination</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="6" class="muted">No alerts yet.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

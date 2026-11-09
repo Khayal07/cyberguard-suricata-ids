@@ -1,0 +1,16 @@
+# CyberGuard — Custom Suricata detection rules (local lab)
+#
+# These rules run inside Suricata, the ONLY detection engine in this project.
+# They are authored and tested against authorized, controlled lab traffic using
+# harmless HTTP markers. No live rules are defined yet — rule authoring is a
+# later phase.
+#
+# Conventions:
+#   - Use the local signature ID (sid) range: >= 1000000 to avoid clashing with
+#     rules shipped by Suricata / rule providers.
+#   - Keep each rule commented with its purpose and the lab traffic that
+#     triggers it.
+#
+# Example (DISABLED — for reference only, enabled in a later phase):
+# alert http any any -> any any (msg:"CYBERGUARD Lab HTTP marker"; \
+#     content:"CYBERGUARD-LAB-TEST"; http.uri; sid:1000001; rev:1;)

@@ -1,0 +1,4 @@
+# Runtime data directory.
+# Holds the SQLite database (cyberguard.db) and, in local dev, the EVE JSON
+# file. These are generated at runtime and git-ignored; only this placeholder
+# is tracked so the directory exists on a fresh clone.

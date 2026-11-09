@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CyberGuard — Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>CyberGuard</h1>
+    <p class="subtitle">Suricata-Powered Network Intrusion Detection</p>
+    <nav class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/alerts">Alerts</a>
+      <a href="/rule-lab">Rule Lab</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Detection Engine Status</h2>
+      <div id="engine-status" class="status status--unknown">Checking…</div>
+      <p id="engine-message" class="muted"></p>
+      <dl class="meta">
+        <dt>EVE JSON path</dt><dd id="eve-path">—</dd>
+        <dt>EVE JSON present</dt><dd id="eve-exists">—</dd>
+        <dt>Stored alerts</dt><dd id="alert-count">—</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>API Health</h2>
+      <div id="api-health" class="status status--unknown">Checking…</div>
+    </section>
+
+    <section class="card">
+      <h2>About</h2>
+      <p>
+        Suricata is the central detection engine. It inspects network traffic
+        (live or authorized PCAP), evaluates it against rules, and writes
+        genuine events to EVE JSON. This application only reads, stores, and
+        displays those events — it never performs detection itself.
+      </p>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

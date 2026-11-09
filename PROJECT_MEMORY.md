@@ -5,7 +5,7 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 0 — Initialization (COMPLETE)
+**Current phase:** Phase 1 — Project Structure & Python Environment (COMPLETE)
 
 ---
 
@@ -73,21 +73,53 @@ Elasticsearch, cloud infra.
 
 ```
 cyberguard-suricata-ids/
-├── .git/
-├── .gitignore          # excludes secrets, venvs, logs, DBs, PCAPs, caches
-├── .env.example        # placeholder env vars (no real secrets)
-├── CLAUDE.md           # permanent instructions for every session
-└── PROJECT_MEMORY.md   # this file
+├── app/
+│   ├── __init__.py            # Flask app factory + route registration
+│   ├── main.py                # entry point: python -m app.main
+│   ├── config.py              # environment-based configuration
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── eve_reader.py      # read/parse Suricata EVE JSON (safe if missing)
+│   │   ├── alert_service.py   # honest engine status + alert count
+│   │   └── database.py        # SQLite connection + alerts schema
+│   ├── templates/
+│   │   ├── index.html         # dashboard
+│   │   ├── alerts.html        # alerts page (empty until ingestion phase)
+│   │   └── rule_lab.html      # rule lab page
+│   └── static/
+│       ├── css/style.css
+│       └── js/dashboard.js    # fetches /api/status + /api/health
+├── suricata/
+│   ├── config/.gitkeep        # future suricata.yaml / threshold config
+│   └── rules/local.rules      # custom lab rules (SID >= 1000000; none active yet)
+├── lab/README.md              # authorized local lab rules of engagement
+├── tests/test_eve_reader.py   # pytest suite (8 tests)
+├── data/.gitkeep              # runtime DB/EVE dir (contents git-ignored)
+├── docs/architecture.md       # architecture explanation
+├── conftest.py                # makes project root importable for pytest
+├── requirements.txt           # Flask, python-dotenv, pytest
+├── README.md
+├── .env.example               # placeholder env vars (no real secrets)
+├── .gitignore
+├── CLAUDE.md
+└── PROJECT_MEMORY.md           # this file
 ```
 
-No application code, Suricata config, or database exists yet (by design — Phase 0
-is initialization only).
+**Architectural adjustments (documented):**
+- Added root `conftest.py` so pytest puts the project root on `sys.path` and the
+  `app` package imports without installation.
+- Added page routes `/alerts` and `/rule-lab` to serve the two extra templates
+  required by the structure (in addition to the required `/`).
+- Local dev defaults `EVE_JSON_PATH` and `SQLITE_DB_PATH` to the project-local
+  `data/` directory (cross-platform); overridden via `.env` on the Linux engine
+  host. The virtual environment lives in `.venv/` (git-ignored).
 
 ---
 
 ## 5. Development Environment
 
 - **Main workstation:** Windows 11 + VS Code.
+- **Python:** 3.12.10 on Windows (`python`). Virtual environment at `.venv/`.
 - **Linux environment for Suricata:** NOT yet chosen. Options under consideration:
   Ubuntu WSL2 (preferred for simplicity), Ubuntu VM, or native Ubuntu. To be
   decided in a later phase.
@@ -128,31 +160,74 @@ and is **git-ignored**.
 
 ## 10. Python Modules and Responsibilities
 
-None yet. Planned modules (subject to refinement):
-
-- `reader` — read/tail EVE JSON, parse event lines.
-- `store` — SQLite schema + insert/query helpers.
-- `app` — Flask application and API endpoints.
-- `notify` — optional Telegram notifications (final phase).
+- `app/config.py` — `Config` class reading env vars (Flask host/port/env/secret,
+  `EVE_JSON_PATH`, `SQLITE_DB_PATH`, Telegram). Loads `.env` via python-dotenv if
+  present; project-relative defaults, no hardcoded secrets.
+- `app/__init__.py` — `create_app()` factory: configures Flask, calls
+  `database.init_db()`, registers page + API routes.
+- `app/main.py` — entry point; builds the app and runs it on the configured
+  host/port (`python -m app.main`).
+- `app/services/eve_reader.py` — `eve_file_exists()`, `parse_line()`,
+  `read_events(path, limit)`, `count_events()`. Reads Suricata EVE JSON
+  (JSON-Lines); returns empty/None safely when the file is missing or a line is
+  malformed. Never generates events.
+- `app/services/database.py` — `get_connection()`, `init_db()` (creates `alerts`
+  table), `count_alerts()`.
+- `app/services/alert_service.py` — `get_engine_status(config)` (honest engine
+  state from EVE file presence), `get_alert_count(config)`.
+- `notify` — optional Telegram notifications (final phase; not created yet).
 
 ---
 
 ## 11. API Endpoints
 
-None yet. To be documented as implemented (method, path, params, response shape).
+Pages:
+- `GET /` → `index.html` (dashboard).
+- `GET /alerts` → `alerts.html`.
+- `GET /rule-lab` → `rule_lab.html`.
+
+API (JSON):
+- `GET /api/health` → `{"status":"ok","service":"cyberguard","component":"flask-api"}`.
+  Liveness of the Flask API itself, NOT the detection engine.
+- `GET /api/status` → `{"detection_engine":"suricata","suricata_configured":<bool>,
+  "eve_json_path":"...","eve_json_exists":<bool>,"message":"...","alert_count":<int>}`.
+  Honest engine state: `suricata_configured` is `false` until EVE JSON output
+  exists. Verified returning `false` / `alert_count: 0` in Phase 1.
 
 ---
 
 ## 12. Database Schema
 
-None yet. SQLite schema (tables, columns, indexes) will be recorded here when the
-storage layer is built.
+SQLite file at `SQLITE_DB_PATH` (default `data/cyberguard.db`, git-ignored).
+Table `alerts` (created by `database.init_db()`, empty until ingestion phase):
+
+| column        | type    | notes                     |
+|---------------|---------|---------------------------|
+| id            | INTEGER | PK AUTOINCREMENT          |
+| timestamp     | TEXT    | event timestamp           |
+| signature     | TEXT    | rule message              |
+| signature_id  | INTEGER | Suricata SID              |
+| category      | TEXT    | alert category            |
+| severity      | INTEGER | alert severity            |
+| src_ip        | TEXT    |                           |
+| src_port      | INTEGER |                           |
+| dest_ip       | TEXT    |                           |
+| dest_port     | INTEGER |                           |
+| protocol      | TEXT    |                           |
+| raw_json      | TEXT    | original EVE JSON line    |
+| created_at    | TEXT    | DEFAULT CURRENT_TIMESTAMP |
 
 ---
 
 ## 13. Dashboard Components
 
-None yet. Will record pages, key DOM components, and how they fetch/render data.
+- `index.html` — Detection Engine Status card, API Health card, About card.
+  `dashboard.js` fetches `/api/status` and `/api/health` on load and renders the
+  honest state (shows "NOT CONFIGURED" in red when Suricata is unconfigured;
+  never a fake active state).
+- `alerts.html` — alerts table placeholder ("No alerts yet").
+- `rule_lab.html` — rule lab placeholder.
+- `static/css/style.css` — dark theme styling.
 
 ---
 
@@ -163,14 +238,35 @@ None yet. Will record pages, key DOM components, and how they fetch/render data.
 - Created `.gitignore`, `CLAUDE.md`, `PROJECT_MEMORY.md`, `.env.example`.
 - Verified Git identity, remote, and branch.
 
-No application functionality implemented yet.
+**Phase 1 (complete):**
+- Full project structure (`app/`, `suricata/`, `lab/`, `tests/`, `data/`,
+  `docs/`) created.
+- Python venv (`.venv/`) with Flask, python-dotenv, pytest installed.
+- Environment-based config (`app/config.py`), no hardcoded secrets/paths.
+- Minimal working Flask app (factory + entry point) with `/`, `/alerts`,
+  `/rule-lab`, `/api/health`, `/api/status`.
+- Service layer: EVE JSON reader, SQLite storage, honest alert/engine status.
+- Dashboard (HTML/CSS/vanilla JS) showing honest engine status.
+- Runs without Suricata and reports the engine as NOT CONFIGURED (no fake state).
 
 ---
 
 ## 15. Commands Used to Run the Application
 
-Not applicable yet. Will record exact run commands (Suricata start command, Flask
-run command, dashboard access URL) as they are implemented.
+```bash
+# Create venv + install deps (Windows path to venv python shown)
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
+# source .venv/bin/activate && pip install -r requirements.txt # Linux/macOS
+
+# Run the Flask app (serves http://127.0.0.1:5000/)
+.venv/Scripts/python.exe -m app.main
+
+# Run tests
+.venv/Scripts/python.exe -m pytest -q
+```
+
+Suricata run commands will be added when the engine is installed (later phase).
 
 ---
 
@@ -181,13 +277,28 @@ run command, dashboard access URL) as they are implemented.
 - `git remote -v` → `origin` = `https://github.com/Khayal07/cyberguard-suricata-ids.git`. ✅
 - `git config user.name` / `user.email` → `Khayal07` / `khayal.izada39@gmail.com`. ✅
 - `git ls-remote origin` → exit 0 (remote reachable, auth OK; empty remote). ✅
-- Commit hash for Phase 0: _recorded in the Phase 0 completion report / git log._
+- Commit hash for Phase 0: `0fba761`.
+
+**Phase 1 (actual results):**
+- Folders/files: all expected paths created (verified via `git add --dry-run`:
+  21 source files, no secrets/venv/db). ✅
+- Dependencies install: `pip install -r requirements.txt` → Flask 3.1.3,
+  python-dotenv 1.2.4, pytest 8.4.2 (+ Werkzeug/Jinja2/click). ✅
+- Tests: `pytest -q` → **8 passed in 0.45s**. ✅
+- Flask starts: `python -m app.main` → "Running on http://127.0.0.1:5000". ✅
+- `GET /api/health` → HTTP 200, `{"status":"ok",...}`. ✅
+- `GET /api/status` → HTTP 200, `suricata_configured:false`, `eve_json_exists:false`,
+  `alert_count:0`, "NOT configured" message. ✅ (honest unconfigured state)
+- `GET /` → HTTP 200, dashboard renders. ✅
+- No secret files staged: `.env`, `.venv/`, `data/cyberguard.db` confirmed
+  git-ignored. ✅
 
 ---
 
 ## 17. Errors Encountered and How They Were Fixed
 
-None in Phase 0.
+None in Phase 0 or Phase 1. (Note: pytest needed the project root on `sys.path`
+to import the `app` package — handled by adding a root `conftest.py`.)
 
 ---
 
@@ -201,35 +312,32 @@ None in Phase 0.
 
 ## 19. Current Development Phase
 
-**Phase 0 — Initialization: COMPLETE.** Awaiting the user's explicit Phase 1 prompt.
+**Phase 1 — Project Structure & Python Environment: COMPLETE.** Awaiting the
+user's explicit Phase 2 prompt.
 
 ---
 
 ## 20. Exact Next Steps
 
-Wait for the user's next phase prompt. Likely Phase 1 candidates (not started until
-explicitly requested):
+Wait for the user's next phase prompt (Phase 2). Likely candidates (not started
+until explicitly requested):
 1. Select and prepare the Linux environment (WSL2 / VM / native Ubuntu).
 2. Install Suricata and document version + config paths.
-3. Configure EVE JSON output and a minimal custom rule for lab testing.
+3. Configure EVE JSON output and author a minimal custom lab rule.
 
 Do **not** begin any of these until the user explicitly provides the phase.
 
 ---
 
-## Phase Plan (agreed roadmap — reference only, implement one at a time)
+## Phase Plan (indicative only — the user drives the exact phase each time)
 
 - **Phase 0 — Initialization:** repo docs, `.gitignore`, memory files, Git/remote
-  verification. ✅
-- **Phase 1 — Linux + Suricata setup:** choose environment, install Suricata,
-  document config paths and run mode.
-- **Phase 2 — Detection rules + EVE JSON:** custom lab rules, verify genuine events
-  land in EVE JSON from controlled traffic/PCAP.
-- **Phase 3 — Python ingestion + storage:** read EVE JSON, define SQLite schema,
-  store genuine events.
-- **Phase 4 — Flask API:** endpoints serving stored events/metrics.
-- **Phase 5 — Dashboard:** HTML/CSS/JS UI consuming the API.
-- **Phase 6 — Telegram notifications (optional):** alerting on new events.
+  verification. ✅ (`0fba761`)
+- **Phase 1 — Project structure & Python environment:** full folder layout, venv,
+  minimal Flask app, honest status endpoints, dashboard shell. ✅
+- **Later phases (order set by the user):** Linux + Suricata install & config;
+  custom lab rules + verify genuine EVE JSON; Python ingestion into SQLite; full
+  Flask API over stored events; full dashboard; optional Telegram notifications.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.
