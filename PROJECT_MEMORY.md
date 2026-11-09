@@ -5,10 +5,11 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 7 — Optional Telegram Alert Notifications (**CODE COMPLETE
-on Windows**; 57 pytest tests pass, Telegram disabled by default and fully
-isolated; **pending manual validation on the Kali VM** with a real bot token by
-the project owner). Phase 6 is COMPLETE and was validated manually on the Kali VM.
+**Current phase:** Phase 7 — Optional Telegram Alert Notifications (**COMPLETE** —
+57 pytest tests pass on Windows; Telegram disabled by default and fully isolated;
+**validated manually on the Kali VM** with a real bot by the project owner — the
+token lived only in the git-ignored `.env` and was never committed). Phase 6 is
+COMPLETE and was validated manually on the Kali VM.
 
 ---
 
@@ -471,8 +472,8 @@ Kali VM):**
   PASS 4/FAIL 0 (exit 0), `rule_toggle_experiment.sh` proved detection depends on
   the Suricata rule, and `/rule-lab` showed both rules enabled (see section 16).
 
-**Phase 7 (optional Telegram notifications — CODE COMPLETE on Windows; Kali
-validation with a real token PENDING):**
+**Phase 7 (optional Telegram notifications — COMPLETE; validated manually on the
+Kali VM with a real bot):**
 - Added `app/services/telegram_notifier.py`: standard-library-only sender
   (`urllib.request`, no new dependency) that forwards a **new** Suricata alert to
   Telegram. Plain text (no `parse_mode`), per-field truncation (~100 chars) +
@@ -499,8 +500,12 @@ validation with a real token PENDING):**
   `textContent`.
 - Added `tests/test_telegram.py` (15 tests, no network — HTTP sender mocked).
   **57 pytest tests pass** on Windows. Added `docs/phase7-telegram.md`.
-- **Pending:** manual validation on the Kali VM with a REAL bot token (setup,
-  `telegram-test`, live alert, revoke flow) by the project owner.
+- **Validated manually on the Kali VM** with a real bot (token only in the
+  git-ignored `.env`, never committed): `telegram-test` delivered the connectivity
+  test; `scripts/e2e_test.sh` delivered exactly 2 plain-text alerts (sid 1000001
+  Severity 1, sid 1000002 Severity 2, "Status: Detected by Suricata"); the benign
+  `/index.html` request produced no notification and older stored alerts did not
+  flood on startup. See section 16.
 
 ---
 
@@ -726,10 +731,19 @@ python -m app.main                 # serve: new Suricata alerts -> Telegram mess
 - Telegram is **inert by default**: with no token/chat id the notifier reports
   `enabled=False` and never sends. No real token used anywhere on Windows.
 
-**Phase 7 end-to-end on the Kali VM:** ⏳ PENDING manual validation by the project
-owner with a REAL bot token (BotFather setup, `telegram-test`, a live
-`/cyberguard-test` alert delivered to Telegram, and the revoke flow). Results to
-be recorded here once reported.
+**Phase 7 end-to-end on the Kali VM (verified manually by the project owner with a
+real bot; the token lived only in the git-ignored `.env` and was never committed):**
+- `python -m app.main telegram-test` → delivered **"CyberGuard connectivity test
+  (not a detection alert)"** to the Telegram chat. ✅
+- Started `python -m app.main` (serve), then `bash scripts/e2e_test.sh` → delivered
+  **exactly 2** Telegram alerts, plain text, each ending "Status: Detected by
+  Suricata": ✅
+  - **"CyberGuard Test Alert (sid 1000001)" — Severity 1.**
+  - **"CyberGuard Warning Alert (sid 1000002)" — Severity 2.**
+- The benign `/index.html` request produced **no** notification. ✅
+- Older stored alerts did **not** flood on startup (silent baseline pass). ✅
+- **Not validated live:** the rate-limit summary message and token revocation —
+  these are covered by mocked unit tests only (see `tests/test_telegram.py`).
 
 **Phase 5 end-to-end on the Kali VM (verified manually):**
 - `sudo suricata -T -c /etc/suricata/suricata.yaml -v` → **2 rules loaded, 0
@@ -786,13 +800,17 @@ be recorded here once reported.
 
 ## 19. Current Development Phase
 
-**Phase 7 — Optional Telegram Alert Notifications: CODE COMPLETE on Windows**
-(57 pytest tests pass; `telegram_notifier.py`, 4 config vars, `telegram-test` CLI,
-`/api/status` fields, dashboard indicator, docs). Telegram is OFF unless both the
-token and chat id are set; it is stdlib-only, plain-text, deduped, rate-limited,
-and fully failure-isolated with the token scrubbed from logs. **Pending** manual
-validation on the Kali VM with a real bot token by the project owner (see
-sections 16 and 20).
+**Phase 7 — Optional Telegram Alert Notifications: COMPLETE** (57 pytest tests
+pass; `telegram_notifier.py`, 4 config vars, `telegram-test` CLI, `/api/status`
+fields, dashboard indicator, docs). Telegram is OFF unless both the token and chat
+id are set; it is stdlib-only, plain-text, deduped, rate-limited, and fully
+failure-isolated with the token scrubbed from logs. **Validated manually on the
+Kali VM** with a real bot (token only in the git-ignored `.env`, never committed):
+`telegram-test` delivered the connectivity test, and `scripts/e2e_test.sh`
+delivered exactly 2 plain-text alerts (sid 1000001 Severity 1, sid 1000002
+Severity 2), with no notification for the benign request and no startup flood. The
+rate-limit summary and token revocation are covered by mocked unit tests only. See
+section 16.
 
 **Phase 6 — Rule Lab + End-to-End Testing: COMPLETE** — validated manually on the
 Kali VM (start_lab all `[OK]`, e2e_test PASS 4/FAIL 0, rule_toggle proved
@@ -803,13 +821,7 @@ section 16.
 
 ## 20. Exact Next Steps
 
-1. Project owner validates Phase 7 on the Kali VM with a REAL bot token (kept only
-   in a local, git-ignored `.env`): create a bot via BotFather, get the chat id,
-   run `python -m app.main telegram-test` (expect OK + a message), then run
-   `python -m app.main`, send `curl http://127.0.0.1:8000/cyberguard-test`, and
-   confirm a Telegram alert arrives (and that historical alerts did not flood on
-   startup). See `docs/phase7-telegram.md`. Report results so they can be recorded.
-2. Then wait for the user's explicit **Phase 8** prompt (documentation and
+1. Wait for the user's explicit **Phase 8** prompt (documentation and
    presentation).
 
 Do **not** begin Phase 8 until the user explicitly provides it.
@@ -840,7 +852,7 @@ Do **not** begin Phase 8 until the user explicitly provides it.
 - **Phase 7 — Optional Telegram notifications:** stdlib-only `telegram_notifier.py`
   (plain text, dedup, severity filter, rate limit + summary, failure isolation,
   token scrubbed), `telegram-test` CLI, `/api/status` fields, dashboard indicator,
-  docs, 57 tests. ✅ Windows; ⏳ Kali validation (real token) pending.
+  docs, 57 tests. ✅ Windows; ✅ Kali validated manually with a real bot.
 - **Later phase (order set by the user):** Phase 8 documentation and presentation.
 
 Each phase: implement → test → review → update this file → commit/push → report →

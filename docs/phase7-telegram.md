@@ -160,3 +160,27 @@ If a token is ever committed, pasted, or shown anywhere:
   re-sending old alerts.
 - Telegram is a **notification** channel only. The dashboard and API remain the
   source of truth; Suricata remains the only detection engine.
+
+---
+
+## 10. Validation status
+
+**Validated manually on the Kali VM** by the project owner with a real bot. The
+token lived only in the git-ignored `.env` and was **never committed**.
+
+- `python -m app.main telegram-test` → delivered **"CyberGuard connectivity test
+  (not a detection alert)"** to the Telegram chat. ✅
+- After starting `python -m app.main` (serve), `bash scripts/e2e_test.sh` delivered
+  **exactly 2** plain-text Telegram alerts, each ending `Status: Detected by
+  Suricata`: ✅
+  - **CyberGuard Test Alert (sid 1000001) — Severity 1**
+  - **CyberGuard Warning Alert (sid 1000002) — Severity 2**
+- The benign `/index.html` request produced **no** notification. ✅
+- Older stored alerts did **not** flood on startup (silent baseline pass). ✅
+- **Not validated live** (covered by mocked unit tests only in
+  `tests/test_telegram.py`): the rate-limit summary message and token revocation.
+
+The notifier logic (disabled-when-unset, message format, truncation/control-char
+stripping, dedup, severity filter, rate-limit + single summary, failure isolation
+with the token scrubbed from logs, and `/api/status` never exposing the token/chat
+id) is covered by the 15 mocked unit tests that run with no network.
