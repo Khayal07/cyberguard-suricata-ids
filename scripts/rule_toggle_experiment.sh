@@ -16,7 +16,7 @@
 # Requires sudo (edits the deployed rules + restarts Suricata) and runs ONLY on
 # Linux (the Kali VM). It is NEVER invoked by the dashboard or any endpoint.
 #
-# Written on Windows, pending validation on the Kali VM.
+# Written on Windows, validated manually on the Kali VM.
 
 set -u
 

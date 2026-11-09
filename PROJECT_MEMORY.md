@@ -4,10 +4,11 @@
 > and before completing each phase. Be specific — record *what*, *where*, *how it
 > works*, and *how it was verified*.
 
-**Last updated:** 2026-11-09
-**Current phase:** Phase 6 — Rule Lab + End-to-End Testing (CODE COMPLETE on Windows;
-42 pytest tests pass; scripts written on Windows, **pending manual validation on
-the Kali VM** by the project owner)
+**Last updated:** 2026-11-10
+**Current phase:** Phase 6 — Rule Lab + End-to-End Testing (**COMPLETE** — 42 pytest
+tests pass on Windows; the three `scripts/` and the live end-to-end flow were
+**validated manually on the Kali VM** by the project owner: start_lab all `[OK]`,
+e2e_test PASS 4/FAIL 0, rule_toggle proved detection depends on the rule)
 
 ---
 
@@ -418,8 +419,8 @@ docs):**
   confirmed pages 200 and `/api/stats`/`/api/alerts` return real data, no
   `raw_json` exposed.
 
-**Phase 6 (Rule Lab + end-to-end testing — CODE COMPLETE on Windows; Kali
-validation pending):**
+**Phase 6 (Rule Lab + end-to-end testing — COMPLETE; validated manually on the
+Kali VM):**
 - Added `app/services/rule_service.py` + `GET /api/rules`: a **read-only** parser
   of the Suricata rules **file** at the fixed `CYBERGUARD_RULES_PATH` (never a
   request path). Extracts sid/msg/priority/classtype/rev/enabled; `#alert` =
@@ -438,8 +439,9 @@ validation pending):**
   restores the backup).
 - Added `tests/test_rules.py` (8 tests). **42 pytest tests pass** on Windows with
   no Suricata. Added `docs/phase6-rule-lab.md`.
-- **Pending:** manual validation of the three scripts and the live end-to-end
-  flow on the Kali VM (written on Windows).
+- **Validated manually on the Kali VM:** `start_lab.sh` all `[OK]`, `e2e_test.sh`
+  PASS 4/FAIL 0 (exit 0), `rule_toggle_experiment.sh` proved detection depends on
+  the Suricata rule, and `/rule-lab` showed both rules enabled (see section 16).
 
 ---
 
@@ -500,7 +502,7 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 .venv/Scripts/python.exe -m pytest -q              # 34 tests
 ```
 
-**Phase 6 Rule Lab + e2e (on the Kali VM — pending manual validation):**
+**Phase 6 Rule Lab + e2e (on the Kali VM — validated manually):**
 
 ```bash
 # Read-only rule view (Windows dev check):
@@ -618,10 +620,24 @@ bash scripts/rule_toggle_experiment.sh    # manual proof detection depends on ru
   rev 2), `note: "File state, not proof that Suricata loaded it."` ✅
 - `node --check dashboard.js` clean; only an `innerHTML` mention in a comment. ✅
 - `bash -n` clean on all three scripts; all LF (no CRLF). ✅ Scripts **not** run
-  on Windows (they are Kali-only; validation by the owner is pending).
+  on Windows (they are Kali-only; run and verified on the Kali VM — see below).
 
-**Phase 6 end-to-end on the Kali VM:** ⏳ PENDING manual validation by the project
-owner (scripts written on Windows). Results to be recorded here once reported.
+**Phase 6 end-to-end on the Kali VM (verified manually by the project owner):**
+- `scripts/start_lab.sh` → **all `[OK]`**: Suricata pid verified
+  (`comm=Suricata-Main`), lab server on port 8000 and backend on port 5000 both
+  listening. ✅
+- `scripts/e2e_test.sh` → **PASS 4 / FAIL 0, exit code 0**. ✅
+  - A: `GET /index.html` benign → no alert, total **unchanged at 10**.
+  - B: `GET /cyberguard-test` → new sid **1000001**, total **10 → 11**.
+  - C: `GET /cyberguard-warning` → new sid **1000002**, total **11 → 12**.
+  - D: re-poll window → no duplicates, total **stable at 12**.
+- `scripts/rule_toggle_experiment.sh` → proved detection depends on the Suricata
+  rule. ✅ With sid 1000001 **disabled**, `suricata -T` loaded **1 rule** and the
+  sid 1000001 count stayed **7 → 7**; after **restore**, `suricata -T` loaded
+  **2 rules** and the count went **7 → 8**. The trap restored the original rules
+  file (`grep -c '^#alert'` = 0).
+- Rule Lab page `/rule-lab` showed both rules **enabled** (priority 1 and 2,
+  rev 2) with the "file state, not proof that Suricata loaded it" notice. ✅
 
 **Phase 5 end-to-end on the Kali VM (verified manually):**
 - `sudo suricata -T -c /etc/suricata/suricata.yaml -v` → **2 rules loaded, 0
@@ -673,22 +689,19 @@ owner (scripts written on Windows). Results to be recorded here once reported.
 
 ## 19. Current Development Phase
 
-**Phase 6 — Rule Lab + End-to-End Testing: CODE COMPLETE on Windows** (42 pytest
-tests pass; `/api/rules` + Rule Lab page + three Kali scripts + docs). The three
-`scripts/` and the live end-to-end flow are **pending manual validation on the
-Kali VM** by the project owner (scripts written on Windows). See section 16.
-Telegram remains **Phase 7** and has not been started.
+**Phase 6 — Rule Lab + End-to-End Testing: COMPLETE** (42 pytest tests pass on
+Windows; `/api/rules` + Rule Lab page + three Kali scripts + docs). The three
+`scripts/` and the live end-to-end flow were **validated manually on the Kali VM**
+by the project owner (start_lab all `[OK]`, e2e_test PASS 4/FAIL 0, rule_toggle
+proved detection depends on the rule, `/rule-lab` shows both rules enabled). See
+section 16. Telegram remains **Phase 7** and has not been started.
 
 ---
 
 ## 20. Exact Next Steps
 
-1. Project owner validates on the Kali VM: pull, run `bash scripts/start_lab.sh`,
-   `bash scripts/e2e_test.sh` (expect all PASS), and optionally
-   `bash scripts/rule_toggle_experiment.sh`; confirm `/rule-lab` shows the rules
-   table in Firefox. Report results so they can be recorded here.
-2. Then wait for the user's explicit **Phase 7** prompt (optional Telegram
-   notifications).
+1. Wait for the user's explicit **Phase 7** prompt (optional Telegram
+   notifications). Phase 6 is fully complete and validated on the Kali VM.
 
 Do **not** begin Phase 7 until the user explicitly provides it.
 
@@ -714,7 +727,7 @@ Do **not** begin Phase 7 until the user explicitly provides it.
   rev:2 (priority/classtype). ✅ Windows; ✅ Kali validated manually.
 - **Phase 6 — Rule Lab + end-to-end tests:** read-only `/api/rules` + Rule Lab
   page, `scripts/` (start_lab, e2e_test, rule_toggle_experiment), docs, 42 tests.
-  ✅ Windows; ⏳ Kali validation pending.
+  ✅ Windows; ✅ Kali validated manually.
 - **Later phases (order set by the user):** Phase 7 optional Telegram
   notifications; Phase 8 documentation and presentation.
 

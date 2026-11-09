@@ -159,6 +159,17 @@ bash scripts/rule_toggle_experiment.sh
 - **Windows (dev):** `/api/rules` parser + endpoint covered by `tests/test_rules.py`
   (enabled, disabled `#alert`, missing file, malformed line, reordered options,
   endpoint found/missing). Full suite green. Scripts pass `bash -n` and are LF.
-- **Kali VM:** the three scripts and the live end-to-end flow are **pending manual
-  validation by the project owner** (written on Windows). Results will be recorded
-  in `PROJECT_MEMORY.md` once reported.
+- **Kali VM (validated manually by the project owner):**
+  - `scripts/start_lab.sh` → all `[OK]`: Suricata pid verified
+    (`comm=Suricata-Main`), lab server on port 8000 and backend on port 5000 both
+    listening.
+  - `scripts/e2e_test.sh` → **PASS 4 / FAIL 0, exit code 0**: A `/index.html` benign,
+    no alert (total unchanged at 10); B `/cyberguard-test` → sid 1000001 (total
+    10→11); C `/cyberguard-warning` → sid 1000002 (total 11→12); D no duplicates
+    (total stable at 12).
+  - `scripts/rule_toggle_experiment.sh` → with sid 1000001 disabled, `suricata -T`
+    loaded **1 rule** and the sid 1000001 count stayed 7→7; after restore, **2
+    rules** loaded and the count went 7→8; the trap restored the original rules file
+    (`grep -c '^#alert'` = 0).
+  - Rule Lab page `/rule-lab` showed both rules **enabled** (priority 1 and 2,
+    rev 2) with the "file state, not proof that Suricata loaded it" notice.

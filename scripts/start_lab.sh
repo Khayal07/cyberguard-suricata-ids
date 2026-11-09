@@ -10,7 +10,7 @@
 # Detection stays entirely with Suricata; this script only inspects state and
 # never writes to eve.json or the database.
 #
-# Written on Windows, pending validation on the Kali VM.
+# Written on Windows, validated manually on the Kali VM.
 
 set -u
 
