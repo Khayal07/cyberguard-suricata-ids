@@ -109,6 +109,22 @@ body {
 .badge--3 { background: rgba(210,153,34,0.18); color: var(--med); border: 1px solid var(--med); }
 .badge--4 { background: rgba(63,185,80,0.18); color: var(--low); border: 1px solid var(--low); }
 .badge--5 { background: rgba(77,163,255,0.18); color: var(--info); border: 1px solid var(--info); }
+/* Rule Lab enabled/disabled badges (file state only). */
+.badge--enabled { background: rgba(63,185,80,0.18); color: var(--ok); border: 1px solid var(--ok); }
+.badge--disabled { background: #30363d; color: var(--muted); border: 1px solid var(--border); }
+
+/* --- Rule Lab "how to test" box --- */
+.howto {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre;
+}
 
 /* --- Distribution chart (hand-built SVG) --- */
 .chart { width: 100%; height: auto; }

@@ -5,7 +5,9 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-09
-**Current phase:** Phase 5 — SOC Dashboard (COMPLETE; validated manually on the Kali VM — rules rev:2 loaded, dashboard verified in Firefox)
+**Current phase:** Phase 6 — Rule Lab + End-to-End Testing (CODE COMPLETE on Windows;
+42 pytest tests pass; scripts written on Windows, **pending manual validation on
+the Kali VM** by the project owner)
 
 ---
 
@@ -81,11 +83,12 @@ cyberguard-suricata-ids/
 │   │   ├── __init__.py
 │   │   ├── eve_reader.py      # incremental EVE JSON reader (inode+offset; alerts only)
 │   │   ├── alert_service.py   # normalize/ingest/query/stats/status + ingestion worker
+│   │   ├── rule_service.py    # read-only Suricata rules-file parser (Phase 6; no detection)
 │   │   └── database.py        # SQLite alerts + ingest_state, parameterized queries
 │   ├── templates/
 │   │   ├── index.html         # dashboard
 │   │   ├── alerts.html        # alerts page (empty until ingestion phase)
-│   │   └── rule_lab.html      # rule lab page
+│   │   └── rule_lab.html      # Rule Lab: read-only rules table + how-to-test box (Phase 6)
 │   └── static/
 │       ├── css/style.css
 │       └── js/dashboard.js    # fetches /api/status + /api/health
@@ -96,13 +99,18 @@ cyberguard-suricata-ids/
 │       └── local.rules        # placeholder/scratch (not referenced by VM config)
 ├── lab/
 │   ├── README.md              # authorized local lab rules of engagement + server usage
-│   └── server.py              # harmless localhost HTTP test server (stdlib; Windows-only so far)
+│   └── server.py              # harmless localhost HTTP test server (stdlib; validated on Kali in Phase 4)
+├── scripts/                   # Phase 6 bash scripts (LF; executable; run on the Kali VM)
+│   ├── start_lab.sh           # readiness check: Suricata + ports 8000/5000 (no sudo, prints fixes)
+│   ├── e2e_test.sh            # end-to-end API test (curl+python3, no jq; never writes DB/eve.json)
+│   └── rule_toggle_experiment.sh  # manual Kali-only proof detection depends on the rule (trap-restore)
 ├── tests/
-│   ├── conftest.py            # shared config/fixtures helpers
+│   ├── conftest.py            # shared config/fixtures helpers (incl. RULES_PATH)
 │   ├── fixtures/eve_alerts_sample.jsonl  # REAL Suricata alert fixtures (2 lines)
 │   ├── test_eve_reader.py     # reader behaviors
 │   ├── test_alert_service.py  # normalization, ingest, status
 │   ├── test_database.py       # persistence, dedup, queries, stats
+│   ├── test_rules.py          # read-only rule parser + /api/rules (Phase 6)
 │   └── test_api.py            # /api/health /status /alerts /stats
 ├── data/.gitkeep              # runtime DB/EVE dir (contents git-ignored)
 ├── docs/
@@ -110,11 +118,13 @@ cyberguard-suricata-ids/
 │   ├── suricata-setup.md      # Phase 2 Suricata install/config (manual, Kali VM)
 │   ├── phase3-detection-tests.md  # Phase 3 detection test results (manual, Kali VM)
 │   ├── phase4-integration.md  # Phase 4 backend/EVE integration
-│   └── phase5-dashboard.md    # Phase 5 SOC dashboard + manual test checklist
+│   ├── phase5-dashboard.md    # Phase 5 SOC dashboard + manual test checklist
+│   └── phase6-rule-lab.md     # Phase 6 Rule Lab + e2e scripts demo guide
 ├── conftest.py                # makes project root importable for pytest
 ├── requirements.txt           # Flask, python-dotenv, pytest
 ├── README.md
 ├── .env.example               # placeholder env vars (no real secrets)
+├── .gitattributes             # forces LF on *.sh (scripts run on the Kali VM)
 ├── .gitignore
 ├── CLAUDE.md
 └── PROJECT_MEMORY.md           # this file
@@ -214,8 +224,10 @@ the VM via `.env`).
 
 - `app/config.py` — `Config` reads env vars: Flask host/port/env/secret plus the
   Phase 4 vars `CYBERGUARD_EVE_PATH`, `CYBERGUARD_SURICATA_PID`,
-  `CYBERGUARD_PROC_BASE`, `CYBERGUARD_DB_PATH`, `CYBERGUARD_POLL_SECONDS`. Loads
-  `.env` if present; no hardcoded secrets.
+  `CYBERGUARD_PROC_BASE`, `CYBERGUARD_DB_PATH`, `CYBERGUARD_POLL_SECONDS`, and the
+  Phase 6 var `CYBERGUARD_RULES_PATH` (default
+  `/var/lib/suricata/rules/cyberguard.rules`). Loads `.env` if present; no
+  hardcoded secrets.
 - `app/__init__.py` — `create_app(config)` factory: configures Flask, calls
   `database.init_db()`, registers routes. Does **not** start the worker (so tests
   never spawn threads).
@@ -236,7 +248,15 @@ the VM via `.env`).
   `list_alerts`, `build_filters`, `get_stats`, `check_suricata_process`
   (pidfile + `/proc/<pid>/comm`, no shell), `get_status`, and `IngestionWorker`
   (daemon poll thread).
-- `notify` — optional Telegram notifications (final phase; not created yet).
+- `app/services/rule_service.py` — **read-only** Suricata rules-file parser
+  (Phase 6). `parse_rules_file(path)` extracts `sid`, `msg`, `priority`,
+  `classtype`, `rev`, `enabled` per rule line (`alert` = enabled, `#alert` =
+  disabled), returns `file_found` + `file_mtime` (ISO UTC) + `rules` + a `note`
+  ("File state, not proof that Suricata loaded it."); missing/unreadable file →
+  `file_found=false`, never raises. `get_rules(config)` reads the fixed
+  `config.RULES_PATH` (never a request path). Makes NO detection decision and
+  never edits the file or runs Suricata.
+- `notify` — optional Telegram notifications (Phase 7; not created yet).
 
 ---
 
@@ -258,6 +278,11 @@ API (JSON):
   Params: `limit`, `offset`, `severity`, `signature_id`, `signature`, `src_ip`,
   `q`, `from`, `to` (ISO). Empty category shown as `uncategorized`.
 - `GET /api/stats` → `{total, by_severity, by_signature, by_src_ip, last_24h}`.
+- `GET /api/rules` → `{file_found, file_path, file_mtime, rules:[{sid, msg,
+  priority, classtype, rev, enabled}], note}` (Phase 6). Read-only view of the
+  rules **file** at the fixed `CYBERGUARD_RULES_PATH`; **not** proof Suricata
+  loaded them. Missing file → `file_found=false`, `rules=[]`. Does not edit the
+  file or run Suricata.
 - No endpoint executes commands or accepts filesystem paths.
 
 ---
@@ -309,11 +334,16 @@ both pages; render functions no-op when their element is absent.
   alert detail panel (all fields, no raw payload).
 - `alerts.html` (`/alerts`) — same alerts table/filters/pagination/detail as a
   focused full-list view.
-- `rule_lab.html` (`/rule-lab`) — unchanged placeholder (Phase 6).
-- `static/js/dashboard.js` — polls `/api/status`, `/api/stats`, `/api/alerts`
-  every ~3s; loading/empty/API-failure/Suricata-unverified states; **no flicker**
-  on background refresh; **XSS-safe** (all dynamic text via `textContent`/DOM, no
-  `innerHTML`).
+- `rule_lab.html` (`/rule-lab`) — **Phase 6**: read-only rules table (SID,
+  Message, Priority, Classtype, Rev, enabled/disabled badge), a prominent "File
+  state, not proof that Suricata loaded it" note, a file-metadata line, and a
+  plain-text "how to test" box with the demo commands. No toggle/edit buttons, no
+  write/command endpoints.
+- `static/js/dashboard.js` — polls `/api/status`, `/api/stats`, `/api/alerts`,
+  and (Phase 6) `/api/rules` every ~3s; loading/empty/API-failure/
+  Suricata-unverified states; **no flicker** on background refresh; **XSS-safe**
+  (all dynamic text via `textContent`/DOM, no `innerHTML`). `loadRules`/
+  `renderRules` no-op when the rules table is absent (other pages).
 - `static/css/style.css` — dark SOC theme, responsive, severity badges.
 
 ---
@@ -388,6 +418,29 @@ docs):**
   confirmed pages 200 and `/api/stats`/`/api/alerts` return real data, no
   `raw_json` exposed.
 
+**Phase 6 (Rule Lab + end-to-end testing — CODE COMPLETE on Windows; Kali
+validation pending):**
+- Added `app/services/rule_service.py` + `GET /api/rules`: a **read-only** parser
+  of the Suricata rules **file** at the fixed `CYBERGUARD_RULES_PATH` (never a
+  request path). Extracts sid/msg/priority/classtype/rev/enabled; `#alert` =
+  disabled; missing file → `file_found=false` (no crash). Makes no detection
+  decision and never edits the file or runs Suricata.
+- Replaced the `rule_lab.html` placeholder with a read-only table + an explicit
+  "File state, not proof that Suricata loaded it" note + a plain-text "how to
+  test" box. `dashboard.js` renders rules with `textContent` only (no `innerHTML`;
+  `node --check` clean). Same polling/empty/error states as the dashboard.
+- Added `scripts/` (LF via `.gitattributes`, executable bit set in git):
+  `start_lab.sh` (readiness check for Suricata + ports 8000/5000; no sudo itself;
+  prints fix commands), `e2e_test.sh` (API-only end-to-end test with a PASS/FAIL
+  table; curl+python3, no jq; never writes DB/eve.json), and
+  `rule_toggle_experiment.sh` (manual Kali-only proof detection depends on the
+  rule; refuses non-Linux, y/N confirm, echoes every command, trap always
+  restores the backup).
+- Added `tests/test_rules.py` (8 tests). **42 pytest tests pass** on Windows with
+  no Suricata. Added `docs/phase6-rule-lab.md`.
+- **Pending:** manual validation of the three scripts and the live end-to-end
+  flow on the Kali VM (written on Windows).
+
 ---
 
 ## 15. Commands Used to Run the Application
@@ -447,9 +500,24 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 .venv/Scripts/python.exe -m pytest -q              # 34 tests
 ```
 
+**Phase 6 Rule Lab + e2e (on the Kali VM — pending manual validation):**
+
+```bash
+# Read-only rule view (Windows dev check):
+CYBERGUARD_RULES_PATH=suricata/rules/cyberguard.rules \
+  .venv/Scripts/python.exe -m app.main   # then open /rule-lab, GET /api/rules
+
+# On the Kali VM:
+bash scripts/start_lab.sh                 # check Suricata + ports 8000/5000
+python3 lab/server.py --port 8000         # harmless localhost test server
+bash scripts/e2e_test.sh                  # drive traffic, assert PASS table
+bash scripts/rule_toggle_experiment.sh    # manual proof detection depends on rule
+```
+
 **Env vars (defaults):** `CYBERGUARD_EVE_PATH=/var/log/suricata/eve.json`,
 `CYBERGUARD_SURICATA_PID=/tmp/suricata.pid`, `CYBERGUARD_DB_PATH=data/cyberguard.db`,
-`CYBERGUARD_POLL_SECONDS=2`, `CYBERGUARD_PROC_BASE=/proc`.
+`CYBERGUARD_POLL_SECONDS=2`, `CYBERGUARD_PROC_BASE=/proc`,
+`CYBERGUARD_RULES_PATH=/var/lib/suricata/rules/cyberguard.rules`.
 
 ---
 
@@ -538,6 +606,23 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 - `node --check dashboard.js` clean; no `innerHTML`/`insertAdjacentHTML`/
   `document.write` with data. ✅
 
+**Phase 6 (actual, Windows — Rule Lab + scripts):**
+- `pytest -q` → **42 passed in ~1.9s** (34 prior + 8 new rule tests). ✅ New
+  `tests/test_rules.py` covers: enabled rule parsed; disabled `#alert` rule;
+  comments/blank lines ignored; missing file → `file_found=false` (no crash);
+  malformed line (missing sid → None, no crash); reordered options still parse;
+  `/api/rules` endpoint found (2 rules) and missing-file cases.
+- Served the app with `CYBERGUARD_RULES_PATH=suricata/rules/cyberguard.rules`:
+  `GET /rule-lab` → 200; `GET /api/rules` → `file_found:true`, 2 rules
+  (sid 1000001 pri 1, sid 1000002 pri 2, both enabled, classtype misc-activity,
+  rev 2), `note: "File state, not proof that Suricata loaded it."` ✅
+- `node --check dashboard.js` clean; only an `innerHTML` mention in a comment. ✅
+- `bash -n` clean on all three scripts; all LF (no CRLF). ✅ Scripts **not** run
+  on Windows (they are Kali-only; validation by the owner is pending).
+
+**Phase 6 end-to-end on the Kali VM:** ⏳ PENDING manual validation by the project
+owner (scripts written on Windows). Results to be recorded here once reported.
+
 **Phase 5 end-to-end on the Kali VM (verified manually):**
 - `sudo suricata -T -c /etc/suricata/suricata.yaml -v` → **2 rules loaded, 0
   failed** (rev:2); Suricata restarted. ✅
@@ -588,21 +673,24 @@ grep -c '^#alert' /var/lib/suricata/rules/cyberguard.rules   # 1 disabled, 0 res
 
 ## 19. Current Development Phase
 
-**Phase 5 — SOC Dashboard: COMPLETE** (34 tests pass; dashboard data layer verified
-on Windows) **and validated manually on the Kali VM** — rules rev:2 loaded
-(2 rules, 0 failed), severity 1/2 produced, dashboard verified in Firefox
-(Total 10, Critical 1, High 1, "SURICATA RUNNING (verified)"); see section 16.
-Awaiting the user's explicit **Phase 6** prompt.
+**Phase 6 — Rule Lab + End-to-End Testing: CODE COMPLETE on Windows** (42 pytest
+tests pass; `/api/rules` + Rule Lab page + three Kali scripts + docs). The three
+`scripts/` and the live end-to-end flow are **pending manual validation on the
+Kali VM** by the project owner (scripts written on Windows). See section 16.
+Telegram remains **Phase 7** and has not been started.
 
 ---
 
 ## 20. Exact Next Steps
 
-Wait for the user's explicit **Phase 6** prompt (expected: optional Telegram
-notifications). Phase 5 is fully validated on the Kali VM; nothing further is
-required there.
+1. Project owner validates on the Kali VM: pull, run `bash scripts/start_lab.sh`,
+   `bash scripts/e2e_test.sh` (expect all PASS), and optionally
+   `bash scripts/rule_toggle_experiment.sh`; confirm `/rule-lab` shows the rules
+   table in Firefox. Report results so they can be recorded here.
+2. Then wait for the user's explicit **Phase 7** prompt (optional Telegram
+   notifications).
 
-Do **not** begin Phase 6 until the user explicitly provides it.
+Do **not** begin Phase 7 until the user explicitly provides it.
 
 ---
 
@@ -624,8 +712,11 @@ Do **not** begin Phase 6 until the user explicitly provides it.
 - **Phase 5 — SOC dashboard:** dark dashboard (cards, inline-SVG chart, top lists,
   alerts table with filters/pagination/detail), ~3s polling, XSS-safe; rules
   rev:2 (priority/classtype). ✅ Windows; ✅ Kali validated manually.
-- **Later phases (order set by the user):** optional Telegram notifications
-  (Phase 6).
+- **Phase 6 — Rule Lab + end-to-end tests:** read-only `/api/rules` + Rule Lab
+  page, `scripts/` (start_lab, e2e_test, rule_toggle_experiment), docs, 42 tests.
+  ✅ Windows; ⏳ Kali validation pending.
+- **Later phases (order set by the user):** Phase 7 optional Telegram
+  notifications; Phase 8 documentation and presentation.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.

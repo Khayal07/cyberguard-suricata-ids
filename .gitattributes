@@ -1,0 +1,4 @@
+# Shell scripts are executed on the Kali VM — always store them with LF endings
+# so they run correctly regardless of the authoring OS (they are written on
+# Windows and validated on the Kali VM).
+*.sh text eol=lf

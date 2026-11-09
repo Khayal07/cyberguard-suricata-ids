@@ -9,7 +9,7 @@
 <body>
   <header class="topbar">
     <h1>CyberGuard</h1>
-    <p class="subtitle">Rule Lab</p>
+    <p class="subtitle">Rule Lab (read-only)</p>
     <nav class="nav">
       <a href="/">Dashboard</a>
       <a href="/alerts">Alerts</a>
@@ -18,18 +18,61 @@
   </header>
 
   <main class="container">
+    <div id="api-banner" class="banner banner--error" role="alert"></div>
+
     <section class="card">
-      <h2>Rule Lab</h2>
+      <h2>Suricata Detection Rules</h2>
       <p class="muted">
-        This page will let you review the custom Suricata detection rules used
-        in the authorized local lab and the harmless HTTP markers that trigger
-        them. Rule authoring and testing is covered in a later phase.
+        This is a <strong>read-only</strong> view of the Suricata rules file. It shows
+        what the file contains — it does <strong>not</strong> load, edit, or run rules,
+        and it is not proof that Suricata is using them.
       </p>
-      <p>
-        Custom rules live in <code>suricata/rules/local.rules</code> and use the
-        local signature ID range (≥ 1000000).
+      <p class="banner banner--warn show" role="note" style="font-weight:600;">
+        File state, not proof that Suricata loaded it. Only Suricata (e.g.
+        <code>suricata -T</code>) can confirm a rule is actually active.
       </p>
+      <p class="muted" id="rules-meta">Loading rules…</p>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>SID</th><th>Message</th><th>Priority</th>
+              <th>Classtype</th><th>Rev</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rules-tbody">
+            <tr class="state-row"><td colspan="6"><span class="loading-dot"></span>Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:1rem;">
+      <h2>How to test the rules (Kali VM lab)</h2>
+      <p class="muted">
+        Run these on the Kali VM, where Suricata is the detection engine. The
+        commands send harmless local HTTP markers; Suricata decides what alerts.
+      </p>
+      <pre class="howto"># 1. Check the lab is ready (Suricata + ports; prints fix commands)
+bash scripts/start_lab.sh
+
+# 2. Start the harmless localhost test server (separate terminal)
+python3 lab/server.py --port 8000
+
+# 3. Trigger the custom rules by hand
+curl http://127.0.0.1:8000/index.html          # benign  -> no alert
+curl http://127.0.0.1:8000/cyberguard-test      # trips sid 1000001
+curl http://127.0.0.1:8000/cyberguard-warning   # trips sid 1000002
+
+# 4. Run the automated end-to-end test (reads the API only)
+bash scripts/e2e_test.sh
+
+# 5. (Manual, Kali only) prove detection depends on the rule
+bash scripts/rule_toggle_experiment.sh</pre>
     </section>
   </main>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

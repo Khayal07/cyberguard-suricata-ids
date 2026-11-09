@@ -30,6 +30,8 @@ def make_config(tmp_path, **overrides):
     cfg = SimpleNamespace(
         DB_PATH=str(tmp_path / "cyberguard.db"),
         EVE_PATH=str(tmp_path / "eve.json"),
+        # Rules file for the read-only Rule Lab; absent by default -> file_found False.
+        RULES_PATH=str(tmp_path / "cyberguard.rules"),
         SURICATA_PID_PATH=str(tmp_path / "suricata.pid"),
         PROC_BASE=str(tmp_path / "no_proc"),  # does not exist -> "unverified"
         POLL_SECONDS=0.01,

@@ -11,7 +11,7 @@ No route executes shell commands or accepts filesystem paths.
 from flask import Flask, jsonify, render_template, request
 
 from app.config import Config
-from app.services import alert_service, database
+from app.services import alert_service, database, rule_service
 
 
 def create_app(config=None):
@@ -78,3 +78,12 @@ def _register_routes(app, config):
     def stats():
         """Aggregate statistics over stored alerts."""
         return jsonify(alert_service.get_stats(config))
+
+    @app.route("/api/rules")
+    def rules():
+        """Read-only view of the Suricata rules FILE (not proof of loading).
+
+        Reads a single configured path; never a path from the request, and never
+        edits the file or runs Suricata. Detection stays entirely with Suricata.
+        """
+        return jsonify(rule_service.get_rules(config))

@@ -27,6 +27,7 @@
     lastCount: 0,
     total: null,
     alertsLoaded: false,
+    rulesLoaded: false,
   };
 
   function $(id) { return document.getElementById(id); }
@@ -362,6 +363,91 @@
     }
   }
 
+  // --- Rule Lab (read-only) ---------------------------------------------
+
+  function ruleStateRow(message, spinner) {
+    var tr = document.createElement("tr");
+    tr.className = "state-row";
+    var td = document.createElement("td");
+    td.colSpan = 6;
+    if (spinner) {
+      var dot = document.createElement("span");
+      dot.className = "loading-dot";
+      td.appendChild(dot);
+    }
+    td.appendChild(document.createTextNode(message));
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function ruleBadge(enabled) {
+    var span = document.createElement("span");
+    span.className = "badge " + (enabled ? "badge--enabled" : "badge--disabled");
+    span.textContent = enabled ? "enabled" : "disabled";
+    return span;
+  }
+
+  function renderRules(data) {
+    var tbody = $("rules-tbody");
+    if (!tbody) return;
+
+    var meta = $("rules-meta");
+    if (meta) {
+      if (data.file_found) {
+        meta.textContent =
+          "File: " + data.file_path +
+          " · modified: " + (data.file_mtime || "—") +
+          " · rules in file: " + (data.rules ? data.rules.length : 0);
+      } else {
+        meta.textContent = "Rules file not found: " + data.file_path +
+          " — nothing to display (this is honest file state, not an error in Suricata).";
+      }
+    }
+
+    var rules = data.rules || [];
+    if (!rules.length) {
+      var msg = data.file_found
+        ? "No rules found in the file."
+        : "Rules file not found on this host.";
+      tbody.replaceChildren(ruleStateRow(msg, false));
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    rules.forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(r.sid));
+      tr.appendChild(cell(r.msg));
+      tr.appendChild(cell(r.priority));
+      tr.appendChild(cell(r.classtype));
+      tr.appendChild(cell(r.rev));
+      var td = document.createElement("td");
+      td.appendChild(ruleBadge(r.enabled));
+      tr.appendChild(td);
+      frag.appendChild(tr);
+    });
+    tbody.replaceChildren(frag);
+  }
+
+  async function loadRules(showLoading) {
+    var tbody = $("rules-tbody");
+    if (!tbody) return; // not on the Rule Lab page
+    if (showLoading || !state.rulesLoaded) {
+      tbody.replaceChildren(ruleStateRow("Loading…", true));
+    }
+    try {
+      var data = await fetchJSON("/api/rules");
+      showApiError(false);
+      state.rulesLoaded = true;
+      renderRules(data);
+    } catch (e) {
+      showApiError(true);
+      if (!state.rulesLoaded) {
+        tbody.replaceChildren(ruleStateRow("Could not load rules.", false));
+      }
+      // On background-poll failure keep the last rows (no flicker / no wipe).
+    }
+  }
+
   // --- Filters / pagination wiring --------------------------------------
 
   function readFilters() {
@@ -416,6 +502,7 @@
     loadStatus();
     loadStats();
     loadAlerts(false); // background refresh — no loading flicker
+    loadRules(false);
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -423,6 +510,7 @@
     loadStatus();
     loadStats();
     loadAlerts(true);
+    loadRules(true);
     setInterval(pollAll, POLL_MS);
   });
 })();

@@ -45,6 +45,11 @@ class Config:
     # Suricata pidfile + the /proc base used to verify the process (Linux only).
     SURICATA_PID_PATH = _env("CYBERGUARD_SURICATA_PID", "/tmp/suricata.pid")
     PROC_BASE = _env("CYBERGUARD_PROC_BASE", "/proc")
+    # Suricata rules file shown (read-only) by the Rule Lab. Fixed path, never
+    # taken from a request. Defaults to the Kali VM's deployed rules location.
+    RULES_PATH = _env(
+        "CYBERGUARD_RULES_PATH", "/var/lib/suricata/rules/cyberguard.rules"
+    )
     # SQLite database (git-ignored). Default lives under the project data/ dir.
     DB_PATH = _env("CYBERGUARD_DB_PATH", str(DATA_DIR / "cyberguard.db"))
     # Background ingestion poll interval (seconds).
