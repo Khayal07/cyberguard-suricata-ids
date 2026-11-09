@@ -1,101 +1,285 @@
 # CyberGuard
 
-### Suricata-Powered Network Intrusion Detection and Monitoring System
+### A Suricata-Powered Network Intrusion Detection and Monitoring System
 
-CyberGuard is a university Information Security project. **Suricata IDS is the
-central, indispensable detection engine.** It inspects network traffic (live or
-authorized PCAP), evaluates it against detection rules, generates genuine
-security events, and writes them to **EVE JSON**. Python only reads, stores,
-serves, and displays those events — it never performs detection itself. If
-Suricata is stopped, new genuine detections stop.
+CyberGuard is a university Information Security project. It watches network
+traffic and shows security alerts on a simple web dashboard.
 
-## Objective
+The key idea is simple: **Suricata is the only detection engine. Python never
+detects anything.** Suricata reads the traffic, checks it against rules, and
+writes alerts. Python only reads those alerts, stores them, and shows them. If
+Suricata stops, new alerts stop too.
 
-Provide a clear, beginner-friendly network security monitoring application where
-the detection work is done by Suricata and Python provides ingestion, storage, a
-small API, and a dashboard.
+> **What is an IDS?** An IDS (Intrusion Detection System) is a tool that watches
+> traffic and raises an alert when it sees something suspicious. It only warns.
+> It does not block.
 
-## Planned architecture
+---
 
+## Goal
+
+Build a clear, beginner-friendly security monitor where:
+
+- **Suricata** does all the detection.
+- **Python** reads the alerts, saves them, and serves a small API.
+- A **dashboard** shows the alerts in the browser.
+
+The project was built step by step, in 8 phases.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A["Network traffic or PCAP"] --> B["Suricata IDS (rules engine)"]
+    B -->|writes| C["EVE JSON (eve.json)"]
+    C -->|read only| D["Python reader (eve_reader.py)"]
+    D --> E["SQLite database (alerts)"]
+    E --> F["Flask API"]
+    F --> G["Dashboard (HTML + CSS + JS)"]
+    F -. optional .-> H["Telegram alert"]
 ```
-Traffic/PCAP → Suricata (rules) → EVE JSON → Python (read → SQLite → Flask API) → Dashboard
-```
 
-See [`docs/architecture.md`](docs/architecture.md) for details.
+**Data flow in words:**
+
+1. Traffic arrives on the network interface.
+2. Suricata checks each packet against the rules.
+3. When a rule matches, Suricata writes an alert to **EVE JSON**.
+4. Python reads the new alert lines from that file.
+5. Python stores each alert in **SQLite**.
+6. The **Flask API** serves the alerts as JSON.
+7. The **dashboard** fetches the API and shows the alerts.
+8. If Telegram is turned on, Python sends a short message for new alerts.
+
+> **EVE JSON** is Suricata's output file. It has one JSON object per line. Each
+> line is one event (for example, an alert).
+
+**Key principle:** detection logic lives only in Suricata rules. Python never
+decides what is an attack. It only shows what Suricata found.
+
+---
 
 ## Technology stack
 
-- **Suricata IDS 8.x** (the detection engine) on Kali Linux (Debian-based)
-- **Python 3**, **Flask**
-- **SQLite**
-- **HTML / CSS / vanilla JavaScript**
-- **EVE JSON** data format
-- **Telegram Bot API** (optional, final phase)
+| Layer            | Technology                         | Why                                  |
+|------------------|------------------------------------|--------------------------------------|
+| Detection engine | Suricata IDS 8.0.7                  | The only tool that inspects traffic. |
+| Engine host      | Kali Linux 2026.3 (VirtualBox VM)  | A Linux box to run Suricata.         |
+| Backend          | Python 3, Flask                    | Reads EVE JSON and serves the API.   |
+| Storage          | SQLite                             | A small file database, no server.    |
+| Frontend         | HTML, CSS, vanilla JavaScript      | A simple dashboard, no framework.    |
+| Data format      | EVE JSON                           | Suricata's alert output.             |
+| Notifications    | Telegram Bot API (optional)        | Sends a message for new alerts.      |
 
-The standard library handles JSON, SQLite, and file processing. No React,
-Next.js, Docker, Redis, Elasticsearch, or cloud infrastructure.
+We did not use React, Docker, Redis, or cloud services. We kept it small and
+easy to read.
 
-## Project structure
+---
+
+## Features
+
+- Reads real Suricata alerts from EVE JSON (never fake alerts).
+- Stores alerts in SQLite with no duplicates.
+- A Flask API: status, alerts (with filters), stats, and rules.
+- A dark SOC dashboard: cards, a severity chart, top lists, and an alert table.
+- Honest engine status: it never says "running" unless it checked the process.
+- A **Rule Lab** page that shows the rules file (read only).
+- Optional Telegram alerts for new, serious alerts.
+- 57 automated tests that run with no Suricata and no network.
+
+> **SOC** means Security Operations Center. It is the team or room where people
+> watch security alerts. Our dashboard copies that style.
+
+---
+
+## Repository structure
 
 ```
-app/            Flask application
-  config.py       environment-based configuration
-  __init__.py     app factory + routes
-  main.py         entry point
-  services/       eve_reader, database, alert_service
-  templates/      index, alerts, rule_lab
-  static/         css + js
-suricata/       rules/ and config/ for the Suricata engine
-lab/            authorized local lab notes
-tests/          pytest tests
-data/           runtime SQLite DB / EVE JSON (git-ignored)
-docs/           architecture notes
+cyberguard-suricata-ids/
+├── app/                      Flask application
+│   ├── config.py               environment-based settings
+│   ├── __init__.py             app factory + routes
+│   ├── main.py                 entry point (serve / ingest-once / telegram-test)
+│   ├── services/
+│   │   ├── eve_reader.py        reads EVE JSON (incremental, safe)
+│   │   ├── alert_service.py     normalize, store, status, worker
+│   │   ├── rule_service.py      read-only rules file parser
+│   │   ├── telegram_notifier.py optional Telegram alerts
+│   │   └── database.py          SQLite tables and queries
+│   ├── templates/              index, alerts, rule_lab pages
+│   └── static/                 css + dashboard.js
+├── suricata/rules/           cyberguard.rules (source of truth)
+├── lab/                      harmless local test server + lab notes
+├── scripts/                  start_lab.sh, e2e_test.sh, rule_toggle_experiment.sh
+├── tests/                    pytest tests (57 total)
+├── docs/                     architecture, demo guide, Q&A, report, slides
+├── data/                     runtime DB / EVE JSON (git-ignored)
+├── .env.example              placeholder settings (no secrets)
+├── CLAUDE.md                 permanent build instructions
+└── PROJECT_MEMORY.md         detailed project memory
 ```
 
-## Setup (local development, Windows/Linux)
+---
 
-1. Create and activate a virtual environment:
+## Installation (on the Kali Linux VM)
+
+Suricata runs only on the Kali VM. These steps were done and checked on that VM.
+
+1. Install Suricata from the Kali repo:
    ```bash
-   python -m venv .venv
-   # Windows (PowerShell):
-   .venv\Scripts\Activate.ps1
-   # Linux/macOS:
-   source .venv/bin/activate
+   sudo apt install -y suricata
+   suricata -V        # shows Suricata 8.0.7 RELEASE
    ```
-2. Install dependencies:
+2. Copy our rules to Suricata's rules folder and point the config at them:
    ```bash
+   sudo cp suricata/rules/cyberguard.rules /var/lib/suricata/rules/cyberguard.rules
+   # In /etc/suricata/suricata.yaml, set the rule-files entry to: cyberguard.rules
+   sudo suricata -T -c /etc/suricata/suricata.yaml -v   # test: 2 rules loaded, 0 failed
+   ```
+3. Set up Python:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
-3. (Optional) copy the environment template and edit values:
+4. (Optional) copy the settings template and edit your local `.env`:
    ```bash
-   cp .env.example .env
-   ```
-4. Run the application:
-   ```bash
-   python -m app.main
-   ```
-   Then open http://127.0.0.1:5000/
-
-5. Run tests:
-   ```bash
-   pytest
+   cp .env.example .env    # .env is git-ignored; never commit it
    ```
 
-## Current development status
+---
 
-**Phase 4 complete (Windows unit tests pass; Kali end-to-end validated manually).**
-Suricata (8.0.7, Kali VM) is installed, configured, and its custom rules verified
-against live lab traffic. The Python backend now incrementally reads Suricata's
-real EVE JSON, stores genuine alerts in SQLite (with dedup), and serves them via
-`/api/status`, `/api/alerts`, and `/api/stats`. The app runs even when Suricata is
-absent and reports the engine honestly (never a fake active state). The full
-dashboard UI is a later phase. See
-[`docs/phase4-integration.md`](docs/phase4-integration.md).
+## How to run (3 terminals on the Kali VM)
 
-See [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) for detailed project state.
+Open three terminals in the project folder.
 
-## Security
+**Terminal 1 — the harmless lab web server** (gives Suricata some HTTP traffic):
+```bash
+python3 lab/server.py --port 8000
+```
 
-Experiments run only in an authorized local lab using harmless markers and
-controlled traffic. The Flask app stays bound to `localhost`. Secrets live in a
-local `.env` (never committed); see [`.env.example`](.env.example).
+**Terminal 2 — the CyberGuard backend** (API + reader on http://127.0.0.1:5000):
+```bash
+python -m app.main
+```
+
+**Terminal 3 — Suricata on the loopback interface** (needs sudo):
+```bash
+sudo suricata -c /etc/suricata/suricata.yaml -i lo -D --pidfile /tmp/suricata.pid
+```
+
+Then open http://127.0.0.1:5000/ in Firefox on the VM.
+
+To test a detection, send a request that matches a rule:
+```bash
+curl http://127.0.0.1:8000/cyberguard-test      # -> alert sid 1000001
+curl http://127.0.0.1:8000/cyberguard-warning   # -> alert sid 1000002
+curl http://127.0.0.1:8000/index.html           # -> no alert (benign)
+```
+
+---
+
+## API
+
+All responses are JSON. The server stays on `localhost`.
+
+| Method & path     | What it returns                                                        |
+|-------------------|------------------------------------------------------------------------|
+| `GET /api/health` | Liveness of the Flask API itself (not the engine).                     |
+| `GET /api/status` | Honest status: engine process, EVE file, counts, Telegram state.       |
+| `GET /api/alerts` | Stored alerts, newest first. Filters: severity, signature, src_ip, date, paging. |
+| `GET /api/stats`  | Totals: by severity, by signature, by source IP, last 24h.             |
+| `GET /api/rules`  | Read-only view of the rules file (not proof the engine loaded it).     |
+
+**Example `GET /api/alerts` item** (fields from a real alert; values shown as an
+example):
+```json
+{
+  "timestamp_utc": "2026-11-09T14:46:33.623977+00:00",
+  "flow_id": 420878223340296,
+  "src_ip": "127.0.0.1",
+  "src_port": 46988,
+  "dest_ip": "127.0.0.1",
+  "dest_port": 8000,
+  "proto": "TCP",
+  "app_proto": "http",
+  "signature": "CyberGuard Test Alert",
+  "signature_id": 1000001,
+  "severity": 1,
+  "category": "uncategorized",
+  "action": "allowed",
+  "http_url": "/cyberguard-test",
+  "http_method": "GET",
+  "http_status": 200,
+  "in_iface": "lo"
+}
+```
+
+The API never returns the raw EVE line. It never runs commands. It never takes a
+file path from the request.
+
+---
+
+## Testing
+
+- **Unit tests:** run on Windows with no Suricata and no network.
+  ```bash
+  pytest -q      # 57 passed
+  ```
+- **End-to-end test (Kali VM):** sends real traffic and checks the API.
+  ```bash
+  bash scripts/e2e_test.sh      # prints a PASS/FAIL table, exit 0 on success
+  ```
+- **Rule toggle experiment (Kali VM):** proves detection depends on the rule.
+  ```bash
+  bash scripts/rule_toggle_experiment.sh
+  ```
+  When the rule is off, no new alert appears. When the rule is back on, the alert
+  appears again. This shows the detection is real, not faked by Python.
+
+---
+
+## Security notes
+
+- CyberGuard is an **IDS**. It only detects and warns. It does not block (no IPS).
+- All tests run in an **authorized local lab** with harmless markers.
+- The Flask app stays on **localhost**. It is not exposed to the internet.
+- No API route **runs shell commands** or reads a path from the request.
+- The dashboard is **XSS-safe**: it renders all text with `textContent`, not HTML.
+- The Telegram **token lives only in a local `.env`** (git-ignored). It is never
+  committed, logged, or shown in the API.
+
+> **XSS** means Cross-Site Scripting. It is an attack where bad text becomes code
+> in the page. We avoid it by never putting alert data into raw HTML.
+
+---
+
+## Known limitations
+
+- Suricata captures on **loopback (`lo`) only**. Other interfaces are not watched.
+- There are only **2 custom rules** (a test alert and a warning alert).
+- It is **IDS only**. It does not block traffic (no IPS mode).
+- The **rate-limit summary** and **token revocation** are only tested with mocked
+  unit tests, not live on the VM.
+- It uses the **Flask development server**. It is not hardened for production.
+- The dashboard has **no login**. It is safe only because it stays on localhost.
+
+---
+
+## Screenshots
+
+Screenshots live in `docs/screenshots/`. See
+[`docs/screenshots/README.md`](docs/screenshots/README.md) for the list. The
+images are added by the project owner from the Kali VM.
+
+---
+
+## More documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — components and data flow.
+- [`docs/demo-guide.md`](docs/demo-guide.md) — a 10-minute live demo script.
+- [`docs/professor-qa.md`](docs/professor-qa.md) — likely questions and answers.
+- [`docs/technical-report.md`](docs/technical-report.md) — the full report.
+- [`docs/presentation.md`](docs/presentation.md) — the slide outline.
+- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — detailed project memory.

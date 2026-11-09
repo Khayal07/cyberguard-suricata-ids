@@ -30,9 +30,8 @@ is no flood on startup.
 3. Choose a name (any) and a username ending in `bot` (e.g. `cyberguard_lab_bot`).
 4. BotFather replies with a **token** that looks like
    `123456789:AAExampleExampleExampleExampleExample`.
-   - This token is a **password**. Keep it secret. Never put it in the repo, in a
-     commit, in a screenshot, or in chat. **(Azərbaycanca:** bu token paroldur —
-     heç vaxt repoya və ya şəklə qoyma.)
+   - This token is like a **password**. Keep it secret. Never put it in the repo,
+     in a commit, in a screenshot, or in a chat message.
 
 ---
 
