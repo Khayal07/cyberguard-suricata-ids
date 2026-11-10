@@ -4,8 +4,9 @@ This is the slide-by-slide outline for the final presentation. Each slide has a
 title, up to five short bullets, speaker notes, and which screenshot or live demo
 step to show.
 
-> Note: a `.pptx` file was not generated in this environment (no slide-maker tool
-> was available). This outline is ready to paste into any slide tool.
+> Note: this outline was turned into `CyberGuard_Presentation.pptx` in this folder
+> (15 slides, dark theme, speaker notes, embedded screenshots, and a native-shape
+> architecture diagram). You can also paste this outline into any slide tool.
 
 ---
 

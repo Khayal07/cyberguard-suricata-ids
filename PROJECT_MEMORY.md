@@ -5,11 +5,13 @@
 > works*, and *how it was verified*.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 8 — Documentation and Final Presentation (**DOCUMENTATION
-COMPLETE**; README, architecture, demo guide, professor Q&A, technical report, and
-slide outline written in simple English and checked against recorded results. The
-7 screenshots in `docs/screenshots/` are **pending** — the project owner adds them
-from the Kali VM). Phase 7 is COMPLETE and was validated manually on the Kali VM.
+**Current phase:** Phase 8 — Documentation and Final Presentation (**COMPLETE**;
+README, architecture, demo guide, professor Q&A, technical report, and slide
+outline written in simple English and checked against recorded results. All 7
+screenshots were added to `docs/screenshots/` (commit `5ba8661`) and the PowerPoint
+deck `docs/CyberGuard_Presentation.pptx` was generated from the outline (commit
+`1838c54`). Phase 7 is COMPLETE and was validated manually on the Kali VM. The
+8-phase build plan is now fully complete.
 
 ---
 
@@ -507,8 +509,7 @@ Kali VM with a real bot):**
   `/index.html` request produced no notification and older stored alerts did not
   flood on startup. See section 16.
 
-**Phase 8 (documentation and final presentation — DOCUMENTATION COMPLETE;
-screenshots pending):**
+**Phase 8 (documentation and final presentation — COMPLETE):**
 - Rewrote `README.md` (was stale at "Phase 4"): project goal, Mermaid architecture
   diagram, key principle, tech-stack table, features, repo structure, Kali install,
   3-terminal run, API table + example JSON, testing (57 tests, e2e, toggle),
@@ -527,10 +528,14 @@ screenshots pending):**
   abstract, intro, problem, objectives, architecture, per-phase implementation,
   testing with ONLY recorded results, limitations, conclusion, future work).
 - Added `docs/presentation.md` (15-slide outline, ≤5 bullets + speaker notes +
-  which screenshot/live step per slide). No `.pptx` generated (no slide-maker tool
-  available in this environment); the outline is ready to paste into a slide tool.
-- Added `docs/screenshots/README.md` listing the 7 screenshots the owner will add;
-  **no fake images created.**
+  which screenshot/live step per slide) and generated the deck
+  `docs/CyberGuard_Presentation.pptx` from it (15 slides, dark theme, large text,
+  speaker notes in the notes pane, the 7 screenshots embedded, and a native-shape
+  architecture diagram). Built with `python-pptx` in a **temporary venv outside the
+  repo**; `python-pptx` was deliberately **not** added to `requirements.txt`.
+- Added all 7 screenshots to `docs/screenshots/` (`01`–`07`; `06-telegram-alerts.jpg`
+  is a phone photo, the rest `.png`) and updated `docs/screenshots/README.md` to
+  list them; **no fake images created.**
 - Language: all Phase 8 docs written in simple English (CEFR A2–B2); banned
   academic words avoided (grep clean); the Azerbaijani line in
   `docs/phase7-telegram.md` was translated to simple English.
@@ -538,7 +543,13 @@ screenshots pending):**
   counts (10→11→12), toggle counts (7→7 / 7→8), the Suricata/lab/port commands, and
   README link targets all match PROJECT_MEMORY and the real scripts; no stale
   "pending/TODO" notes in the new docs.
-- **Pending:** the 7 screenshots in `docs/screenshots/` (owner adds from the VM).
+- Screenshots delivered in commit `5ba8661`; the presentation deck in commit
+  `1838c54`. Phase 8 — and the full 8-phase build plan — is now complete.
+- **Telegram token hygiene:** during screenshot review a captured image exposed the
+  live Telegram bot token locally, so the token was **revoked and replaced** via
+  BotFather. The exposed image was **never kept on `main`** and the old token was
+  **never committed**; the new token lives only in the **git-ignored `.env`** on the
+  Kali VM.
 
 ---
 
@@ -833,13 +844,17 @@ real bot; the token lived only in the git-ignored `.env` and was never committed
 
 ## 19. Current Development Phase
 
-**Phase 8 — Documentation and Final Presentation: DOCUMENTATION COMPLETE**
+**Phase 8 — Documentation and Final Presentation: COMPLETE**
 (rewrote `README.md` and `docs/architecture.md`; added `docs/demo-guide.md`,
 `docs/professor-qa.md`, `docs/technical-report.md`, `docs/presentation.md`, and
 `docs/screenshots/README.md`). All written in simple English and checked against
-recorded results (consistency greps clean). No `.pptx` generated (no slide-maker
-tool available). **Pending:** the 7 screenshots in `docs/screenshots/`, which the
-project owner adds from the Kali VM.
+recorded results (consistency greps clean). All 7 screenshots were added to
+`docs/screenshots/` (commit `5ba8661`; `06-telegram-alerts.jpg` is a phone photo,
+the rest `.png`), and the PowerPoint deck `docs/CyberGuard_Presentation.pptx` was
+generated from `docs/presentation.md` (15 slides, dark theme, speaker notes, the 7
+screenshots embedded, and a native-shape architecture diagram; commit `1838c54`).
+The deck was built with `python-pptx` in a temporary venv **outside the repo**,
+which was **not** added to `requirements.txt`.
 
 **Phase 7 — Optional Telegram Alert Notifications: COMPLETE** (57 pytest tests
 pass; `telegram_notifier.py`, 4 config vars, `telegram-test` CLI, `/api/status`
@@ -862,12 +877,20 @@ section 16.
 
 ## 20. Exact Next Steps
 
-1. Project owner adds the 7 screenshots to `docs/screenshots/` from the Kali VM
-   (file names listed in `docs/screenshots/README.md`) and, if wanted, builds the
-   slide deck from `docs/presentation.md`.
-2. The 8-phase build plan is complete. Any further work (more rules, a real
-   interface, dashboard login, Docker, `suricata-update`) is optional future work
-   and should be started only on an explicit request.
+1. The 8-phase build plan is **complete**: all code, tests, docs, the 7 screenshots
+   (commit `5ba8661`), and the presentation deck (commit `1838c54`) are on `main`.
+   Any further work (more rules, a real interface, dashboard login, Docker,
+   `suricata-update`) is optional future work and should be started only on an
+   explicit request.
+
+**Before the demo (checklist):**
+- Take a fresh **Kali VM snapshot** so the lab can be restored quickly if anything
+  breaks.
+- Run through [`docs/demo-guide.md`](docs/demo-guide.md) **once** end to end to
+  confirm every step works before presenting.
+- Read [`docs/professor-qa.md`](docs/professor-qa.md) to prepare for questions.
+- **After the demo, revoke the Telegram bot token** via BotFather (it lives only in
+  the git-ignored `.env` on the Kali VM and was never committed).
 
 ---
 
@@ -898,8 +921,8 @@ section 16.
   docs, 57 tests. ✅ Windows; ✅ Kali validated manually with a real bot.
 - **Phase 8 — Documentation & final presentation:** README + architecture rewritten;
   demo guide, professor Q&A, technical report, slide outline, and screenshots index
-  added; simple English; consistency greps clean. ✅ docs complete; ⏳ 7 screenshots
-  pending (owner adds from the VM).
+  added; simple English; consistency greps clean. 7 screenshots added (commit
+  `5ba8661`) and the `.pptx` deck generated (commit `1838c54`). ✅ COMPLETE.
 
 Each phase: implement → test → review → update this file → commit/push → report →
 STOP.
