@@ -269,9 +269,19 @@ file path from the request.
 
 ## Screenshots
 
-Screenshots live in `docs/screenshots/`. See
-[`docs/screenshots/README.md`](docs/screenshots/README.md) for the list. The
-images are added by the project owner from the Kali VM.
+Screenshots live in `docs/screenshots/` (see
+[`docs/screenshots/README.md`](docs/screenshots/README.md) for the list). They were
+taken on the Kali VM.
+
+> Note: Numbers in the screenshots come from later runs than the numbers in the text.
+
+- [`01-dashboard-overview.png`](docs/screenshots/01-dashboard-overview.png) — the SOC dashboard: cards, severity chart, and "SURICATA RUNNING (verified)".
+- [`02-alert-detail.png`](docs/screenshots/02-alert-detail.png) — the alert detail panel with all fields.
+- [`03-rule-lab.png`](docs/screenshots/03-rule-lab.png) — the Rule Lab page with both rules.
+- [`04-e2e-pass-table.png`](docs/screenshots/04-e2e-pass-table.png) — `e2e_test.sh` showing PASS 4 / FAIL 0.
+- [`05-rule-toggle-summary.png`](docs/screenshots/05-rule-toggle-summary.png) — `rule_toggle_experiment.sh` SUMMARY.
+- [`06-telegram-alerts.jpg`](docs/screenshots/06-telegram-alerts.jpg) — the two Telegram alert messages.
+- [`07-suricata-not-running.png`](docs/screenshots/07-suricata-not-running.png) — the dashboard with the "NOT RUNNING" banner.
 
 ---
 

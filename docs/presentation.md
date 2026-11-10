@@ -115,7 +115,7 @@ real IDS, Python, SQLite, and plain web code. It is easy to read and maintain."
 the Suricata process. The cards and chart give a quick view. The table lists the
 alerts."
 
-**Show:** Screenshot 1 — dashboard overview.
+**Show:** Screenshot 1 — dashboard overview (`docs/screenshots/01-dashboard-overview.png`).
 
 ---
 
@@ -131,7 +131,7 @@ alerts."
 destination, the URL, the time. My code did not create any of this. It only stored
 what Suricata wrote."
 
-**Show:** Screenshot 2 — alert detail panel.
+**Show:** Screenshot 2 — alert detail panel (`docs/screenshots/02-alert-detail.png`).
 
 ---
 
@@ -147,7 +147,7 @@ what Suricata wrote."
 critical. One fires on a warning URL and is high. The priority in the rule sets the
 severity in the alert."
 
-**Show:** Screenshot 3 — Rule Lab page.
+**Show:** Screenshot 3 — Rule Lab page (`docs/screenshots/03-rule-lab.png`).
 
 ---
 
@@ -178,7 +178,7 @@ Then two test requests: two alerts appear. This is live, and Suricata found them
 traffic and checks the API. It shows four passes and zero fails. So the whole
 pipeline works end to end."
 
-**Show:** Screenshot 4 — e2e_test PASS table.
+**Show:** Screenshot 4 — e2e_test PASS table (`docs/screenshots/04-e2e-pass-table.png`).
 
 ---
 
@@ -194,7 +194,7 @@ pipeline works end to end."
 stops. I turn it back on and the alert comes back. So the detection is real and
 depends on Suricata."
 
-**Show:** Screenshot 5 — rule_toggle SUMMARY output.
+**Show:** Screenshot 5 — rule_toggle SUMMARY output (`docs/screenshots/05-rule-toggle-summary.png`).
 
 ---
 
@@ -210,7 +210,7 @@ depends on Suricata."
 backend is down, the browser shows that too. The web app cannot run commands, and
 it is safe from XSS."
 
-**Show:** Screenshot 7 — Suricata NOT RUNNING banner.
+**Show:** Screenshot 7 — Suricata NOT RUNNING banner (`docs/screenshots/07-suricata-not-running.png`).
 
 ---
 
@@ -226,7 +226,7 @@ it is safe from XSS."
 message for each new serious alert. It is plain text, it never floods, and the
 token is never committed."
 
-**Show:** Screenshot 6 — Telegram alerts on a phone.
+**Show:** Screenshot 6 — Telegram alerts on a phone (`docs/screenshots/06-telegram-alerts.jpg`).
 
 ---
 
